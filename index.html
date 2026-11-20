@@ -207,6 +207,7 @@
       <h3 style="margin:0">Bluetooth log</h3><button class="ghost" id="btnCopyLog">Copy</button>
     </div>
     <div class="small">If something doesn't work, copy this log and send it to Claude.</div>
+    <button class="ghost" id="btnScanAll" style="margin-top:8px;width:100%">Troubleshoot: scan ALL Bluetooth devices</button>
     <div id="log"></div>
   </div>
 </div>
@@ -318,14 +319,15 @@ const FTMS = 0x1826, C_DATA = 0x2acd, C_CP = 0x2ad9, C_STATUS = 0x2ada, C_SPD_RA
 let dev = null, cp = null, cpQueue = Promise.resolve(), cpWaiters = [], hasControl = false, reconnecting = false;
 let speedRange = {min:1.0, max:16.0, inc:0.1}, inclRange = null;
 
-async function connectTreadmill(){
+async function connectTreadmill(showAll){
   if(!navigator.bluetooth){ showBanner('Bluetooth is not available in this browser. On iPhone use Bluefy; on Mac use Chrome.'); return; }
   try{
     unlockAudio();
-    dev = await navigator.bluetooth.requestDevice({
-      filters:[{services:[FTMS]}, {namePrefix:'FS-'}],
-      optionalServices:[FTMS, 0xfff0, 'device_information']
-    });
+    const opts = showAll
+      ? {acceptAllDevices:true, optionalServices:[FTMS, 0xfff0, 'device_information']}
+      : {filters:[{services:[FTMS]}, {namePrefix:'FS-'}, {namePrefix:'FS'}], optionalServices:[FTMS, 0xfff0, 'device_information']};
+    log('Scanning', showAll ? '(all devices)' : '(FTMS / FS- filter)');
+    dev = await navigator.bluetooth.requestDevice(opts);
     log('Selected', dev.name || dev.id);
     dev.addEventListener('gattserverdisconnected', onDisconnected);
     await setupGatt();
@@ -784,6 +786,7 @@ function init(){
   if(!navigator.bluetooth) $('unsupported').classList.add('show');
   $('btnConnect').onclick = () => st.connected ? disconnect() : connectTreadmill();
   $('btnHr').onclick = connectHr;
+  $('btnScanAll').onclick = () => { if(st.connected) disconnect(); connectTreadmill(true); };
   $('btnDemo').onclick = startDemo;
   $('btnStop').onclick = () => { if(W.active) finishWorkout(true); else { stopBelt(); if(st.sessionStarted) saveSession('Manual'); } };
   $('btnSkip').onclick = skipStep;
