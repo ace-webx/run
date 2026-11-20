@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0e1116">
+<title>Pawan Treadmill</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171b22; --card2:#1e232c; --line:#2a303b;
+    --text:#e9edf2; --muted:#8b95a5; --accent:#3ddc97; --accent2:#4aa8ff;
+    --warn:#ffb020; --danger:#ff4d4f;
+    --z1:#6b7280; --z2:#3ddc97; --z3:#ffd23f; --z4:#ff8a3d; --z5:#ff4d4f;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  body{padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 90px);max-width:720px;margin:0 auto}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 2px}
+  header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.2px}
+  .pill{font-size:12px;padding:4px 10px;border-radius:999px;background:var(--card2);color:var(--muted)}
+  .pill.ok{background:rgba(61,220,151,.15);color:var(--accent)}
+  .pill.bad{background:rgba(255,77,79,.15);color:var(--danger)}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  button{font:inherit;border:0;border-radius:12px;padding:12px 14px;background:var(--card2);color:var(--text);
+    font-weight:600;cursor:pointer;touch-action:manipulation}
+  button:active{transform:scale(.97)}
+  button:disabled{opacity:.4}
+  .primary{background:var(--accent);color:#04140c}
+  .blue{background:var(--accent2);color:#04101e}
+  .danger{background:var(--danger);color:#fff}
+  .ghost{background:transparent;border:1px solid var(--line)}
+  .grow{flex:1}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .m{background:var(--card2);border-radius:12px;padding:10px;text-align:center}
+  .m .v{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+  .m .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .m.big{grid-column:span 3}
+  .m.big .v{font-size:56px}
+  .hrbox .v{transition:color .3s}
+  .zonebar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:8px;background:var(--card2)}
+  .zonebar div{height:100%}
+  .step-now{font-size:20px;font-weight:700}
+  .step-next{font-size:13px;color:var(--muted);margin-top:4px}
+  .prog{height:10px;background:var(--card2);border-radius:6px;overflow:hidden;margin:10px 0 4px}
+  .prog > div{height:100%;background:var(--accent);width:0%;transition:width .5s}
+  .steps{display:flex;gap:2px;height:22px;margin-top:8px;align-items:flex-end}
+  .steps div{background:var(--card2);border-radius:3px;min-width:3px}
+  .steps div.done{background:#2a5a45}
+  .steps div.cur{background:var(--accent)}
+  .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0b0e12;border-top:1px solid var(--line);
+    padding:6px 6px calc(env(safe-area-inset-bottom) + 6px);z-index:10}
+  .tabs button{flex:1;background:transparent;color:var(--muted);font-size:13px;padding:10px 4px}
+  .tabs button.on{color:var(--accent)}
+  .tab{display:none}.tab.on{display:block}
+  .wk{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px;border-radius:12px;
+    background:var(--card2);margin:8px 0}
+  .wk h3{margin:0;font-size:15px}
+  .wk p{margin:3px 0 0;font-size:12px;color:var(--muted)}
+  .tag{font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(255,176,32,.15);color:var(--warn);margin-left:6px;vertical-align:middle}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input,textarea,select{width:100%;font:inherit;background:var(--card2);color:var(--text);border:1px solid var(--line);
+    border-radius:10px;padding:10px}
+  textarea{min-height:140px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+  .speedbtns{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
+  .ctl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:center}
+  .ctl .val{text-align:center;font-size:22px;font-weight:800}
+  .stopbar{position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom) + 70px);z-index:11}
+  .stopbar button{width:76px;height:76px;border-radius:50%;font-size:16px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--muted);font-weight:600}
+  .small{font-size:12px;color:var(--muted)}
+  .banner{padding:10px 12px;border-radius:12px;background:rgba(255,176,32,.12);color:var(--warn);font-size:13px;margin:8px 0;display:none}
+  .banner.show{display:block}
+  #log{font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)}
+  .toggle{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
+  .toggle input{width:auto;transform:scale(1.3)}
+  .flash{animation:flash 1s ease-in-out 3}
+  @keyframes flash{50%{background:rgba(255,176,32,.35)}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏃 Pawan Treadmill</h1>
+  <span id="connPill" class="pill">Not connected</span>
+</header>
+
+<div id="unsupported" class="banner">
+  This browser can't use Bluetooth. On iPhone, open this page in <b>Bluefy</b> (free on the App Store). On Mac, use <b>Chrome</b>.
+  You can still try <b>Demo mode</b> below.
+</div>
+<div id="alertBanner" class="banner"></div>
+
+<div class="row">
+  <button id="btnConnect" class="primary grow">Connect treadmill</button>
+  <button id="btnHr" class="ghost">❤️ HR</button>
+  <button id="btnDemo" class="ghost">Demo</button>
+</div>
+
+<!-- LIVE METRICS -->
+<div class="card">
+  <div class="metrics">
+    <div class="m big"><div class="v" id="mSpeed">0.0</div><div class="l">km/h</div></div>
+    <div class="m"><div class="v" id="mTime">00:00</div><div class="l">Time</div></div>
+    <div class="m"><div class="v" id="mDist">0.00</div><div class="l">km</div></div>
+    <div class="m"><div class="v" id="mPace">--:--</div><div class="l">min/km</div></div>
+    <div class="m hrbox"><div class="v" id="mHr">--</div><div class="l" id="mHrL">HR</div></div>
+    <div class="m"><div class="v" id="mIncl">0</div><div class="l">Incline</div></div>
+    <div class="m"><div class="v" id="mKcal">--</div><div class="l">kcal</div></div>
+  </div>
+  <div class="zonebar" id="zoneBar"></div>
+</div>
+
+<!-- WORKOUT PROGRESS -->
+<div class="card" id="wkCard" style="display:none">
+  <div class="small" id="wkName"></div>
+  <div class="step-now" id="stepNow"></div>
+  <div class="prog"><div id="stepProg"></div></div>
+  <div class="row" style="justify-content:space-between">
+    <span class="small" id="stepLeft"></span><span class="small" id="wkLeft"></span>
+  </div>
+  <div class="step-next" id="stepNext"></div>
+  <div class="steps" id="stepsViz"></div>
+  <div class="row" style="margin-top:10px">
+    <button class="ghost grow" id="btnSkip">Skip step ⏭</button>
+    <button class="ghost grow" id="btnEndWk">End workout</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tab on" id="tab-workouts">
+  <div class="card">
+    <div class="small">Your sessions from the running plan. Speeds change on their own, with a 10-second spoken warning first.</div>
+    <div id="wkList"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 6px">Custom workout</h3>
+    <div class="small">One step per line: <code>minutes @ speed [incline]</code>, or <code>2.5km @ 5.0</code> for distance. Example: <code>5 @ 4.0</code></div>
+    <label>Name</label><input id="cName" placeholder="My workout">
+    <label>Steps</label>
+    <textarea id="cSteps" placeholder="5 @ 4.0&#10;25 @ 5.8&#10;5 @ 4.0"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="blue grow" id="btnCustomSave">Save</button>
+      <button class="primary grow" id="btnCustomStart">Start now</button>
+    </div>
+  </div>
+</div>
+
+<div class="tab" id="tab-manual">
+  <div class="card">
+    <h3 style="margin:0 0 10px">Speed (km/h)</h3>
+    <div class="ctl">
+      <button id="spDown">− 0.1</button><div class="val" id="spTarget">0.0</div><button id="spUp">+ 0.1</button>
+    </div>
+    <div class="speedbtns" id="speedPresets"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 10px">Incline</h3>
+    <div class="ctl">
+      <button id="inDown">− 1</button><div class="val" id="inTarget">0</div><button id="inUp">+ 1</button>
+    </div>
+    <div class="small" style="margin-top:6px">Sent as FTMS incline %. The treadmill may map this to its own 0–15 levels; check the console the first time.</div>
+  </div>
+  <div class="card row">
+    <button class="primary grow" id="btnStartBelt">▶ Start belt</button>
+    <button class="ghost grow" id="btnPauseBelt">⏸ Pause</button>
+  </div>
+</div>
+
+<div class="tab" id="tab-history">
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3 style="margin:0">History</h3>
+      <div class="row"><button class="ghost" id="btnCsv">Export CSV</button><button class="ghost" id="btnClearHist">Clear</button></div>
+    </div>
+    <div id="histTable" style="margin-top:10px;overflow-x:auto"></div>
+  </div>
+</div>
+
+<div class="tab" id="tab-settings">
+  <div class="card">
+    <h3 style="margin:0">Safety</h3>
+    <label>Max speed the app may set (km/h)</label><input id="sMaxSpeed" type="number" step="0.1" min="1" max="16">
+    <div class="toggle"><span>HR guard: auto step-down</span><input type="checkbox" id="sGuard"></div>
+    <div class="small">When HR stays at or above the threshold for the set time, speed drops by the set amount for the rest of that step. This follows the plan's step-down rule. It needs an HR source: a chest strap, or an Apple Watch app that broadcasts HR (e.g. HeartCast).</div>
+    <label>Guard threshold (bpm)</label><input id="sGuardHr" type="number">
+    <label>Guard hold time (seconds)</label><input id="sGuardSec" type="number">
+    <label>Step-down amount (km/h)</label><input id="sGuardDrop" type="number" step="0.1">
+    <div class="toggle"><span>Stop belt when workout ends</span><input type="checkbox" id="sAutoStop"></div>
+    <div class="toggle"><span>Voice announcements</span><input type="checkbox" id="sVoice"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0">Google Sheets sync (optional)</h3>
+    <label>Apps Script Web App URL</label><input id="sHook" placeholder="https://script.google.com/macros/s/.../exec">
+    <div class="small">Each finished session is sent to this URL as one row. The Apps Script code is in the setup notes.</div>
+    <button class="ghost" id="btnTestHook" style="margin-top:8px">Send test row</button>
+  </div>
+  <div class="card">
+    <button class="blue" id="btnSaveSettings" style="width:100%">Save settings</button>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h3 style="margin:0">Bluetooth log</h3><button class="ghost" id="btnCopyLog">Copy</button>
+    </div>
+    <div class="small">If something doesn't work, copy this log and send it to Claude.</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<div class="stopbar"><button class="danger" id="btnStop">STOP</button></div>
+
+<nav class="tabs">
+  <button data-tab="workouts" class="on">Workouts</button>
+  <button data-tab="manual">Manual</button>
+  <button data-tab="history">History</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+
+<script>
+"use strict";
+/* ============================================================
+   Pawan Treadmill — Web Bluetooth FTMS controller
+   FTMS service 0x1826; Treadmill Data 0x2ACD; Control Point 0x2AD9;
+   Machine Status 0x2ADA; Speed range 0x2AD4; Incline range 0x2AD5.
+   ============================================================ */
+
+// ---------- HR zones (Karvonen, rest 61 / max 183 — from the plan) ----------
+const ZONES = [
+  {name:'Z1', max:132, color:'var(--z1)'},
+  {name:'Z2', max:145, color:'var(--z2)'},
+  {name:'Z3', max:157, color:'var(--z3)'},
+  {name:'Z4', max:169, color:'var(--z4)'},
+  {name:'Z5', max:999, color:'var(--z5)'},
+];
+function zoneOf(hr){ if(!hr) return -1; return ZONES.findIndex(z => hr <= z.max); }
+
+// ---------- Built-in workouts (from the running plan, Nov 2026) ----------
+const WU = (min=5, sp=4.0) => ({label:'Warm-up walk', kind:'time', value:min*60, speed:sp, incline:0});
+const CD = (min=5, sp=4.0) => ({label:'Cool-down walk', kind:'time', value:min*60, speed:sp, incline:0});
+const RUN = (min, sp, label='Run') => ({label, kind:'time', value:min*60, speed:sp, incline:0});
+const BUILTIN = [
+  {id:'r58', name:'Run 5.8 × 25', desc:'Current standard session. WU 5 → run 25 @ 5.8 → CD 5', steps:[WU(), RUN(25,5.8), CD()]},
+  {id:'r55', name:'Run 5.5 × 25', desc:'Re-entry / warm-evening option. WU 5 → run 25 @ 5.5 → CD 5', steps:[WU(), RUN(25,5.5), CD()]},
+  {id:'r58l6', name:'5.8 → last 5 @ 6.0', desc:'Next speed lever (one change only). WU 5 → 20 @ 5.8 → 5 @ 6.0 → CD 5',
+    steps:[WU(), RUN(20,5.8), RUN(5,6.0,'Run (finish)'), CD()]},
+  {id:'r58x30', name:'Run 5.8 × 30', desc:'Duration lever instead of speed. WU 5 → 30 @ 5.8 → CD 5', steps:[WU(), RUN(30,5.8), CD()]},
+  {id:'z2', name:'Zone 2 — 30 min', desc:'Thursday easy session. Aim for HR 133–145; adjust speed by hand if HR goes outside that range',
+    steps:[WU(), {label:'Zone 2 steady', kind:'time', value:30*60, speed:5.0, incline:0}, CD()]},
+  {id:'incl', name:'Incline walk', desc:'WU 5 flat → 25 @ 4.8, incline 8 → CD 5 flat. Target 120–135 bpm',
+    steps:[WU(5,4.5), {label:'Incline walk', kind:'time', value:25*60, speed:4.8, incline:8}, CD(5,4.5)]},
+  {id:'5k', name:'5K benchmark @ 5.0', desc:'Steady 5.0 km/h until 5.00 km on the treadmill. Next one due mid-Dec/Jan',
+    steps:[{label:'5K steady', kind:'dist', value:5000, speed:5.0, incline:0}]},
+  {id:'int', name:'Intervals 3 × 3 min', desc:'Phase 3, not unlocked yet (earliest early Dec). WU 10 → 3 × (3 @ 6.5 / 3 @ 4.0) → CD 5', locked:true,
+    steps:[WU(10), RUN(3,6.5,'Hard 1'), RUN(3,4.0,'Recover walk'), RUN(3,6.5,'Hard 2'), RUN(3,4.0,'Recover walk'), RUN(3,6.5,'Hard 3'), CD()]},
+];
+
+// ---------- Settings ----------
+const DEFAULTS = {maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:''};
+let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
+function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+// ---------- Live state ----------
+const st = {
+  speed:0, distance:null, incline:0, kcal:null, tmHr:null, elapsed:null,
+  hr:null, hrSrc:null, targetSpeed:0, targetIncline:0,
+  ownDist:0, beltSec:0, lastTick:Date.now(),
+  zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0,
+  connected:false, demo:false, sessionStarted:false, sessionStartAt:null,
+};
+
+// ---------- Logging ----------
+const logLines = [];
+function log(...a){
+  const t = new Date().toTimeString().slice(0,8);
+  const line = t + ' ' + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+  logLines.push(line); if(logLines.length > 400) logLines.shift();
+  const el = document.getElementById('log'); if(el){ el.textContent = logLines.slice(-150).join('\n'); el.scrollTop = el.scrollHeight; }
+  console.log(line);
+}
+const hex = dv => Array.from(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+
+// ---------- FTMS parsing ----------
+function parseTreadmillData(dv){
+  const d = {}; let i = 0;
+  const len = dv.byteLength;
+  const need = n => i + n <= len;
+  if(!need(2)) return d;
+  const f = dv.getUint16(0, true); i = 2;
+  try{
+    if(!(f & 0x0001)){ if(need(2)){ d.speed = dv.getUint16(i,true)/100; } i += 2; }      // Instantaneous speed (present when bit0 == 0)
+    if(f & 0x0002){ i += 2; }                                                              // Average speed
+    if(f & 0x0004){ if(need(3)){ d.distance = dv.getUint16(i,true) | (dv.getUint8(i+2) << 16); } i += 3; } // Total distance (m)
+    if(f & 0x0008){ if(need(2)){ d.incline = dv.getInt16(i,true)/10; } i += 4; }          // Inclination + ramp angle
+    if(f & 0x0010){ i += 4; }                                                              // Elevation gain
+    if(f & 0x0020){ i += 1; }                                                              // Instantaneous pace
+    if(f & 0x0040){ i += 1; }                                                              // Average pace
+    if(f & 0x0080){ if(need(2)){ const k = dv.getUint16(i,true); if(k !== 0xFFFF) d.kcal = k; } i += 5; } // Energy
+    if(f & 0x0100){ if(need(1)){ const h = dv.getUint8(i); if(h > 0) d.hr = h; } i += 1; }  // Heart rate
+    if(f & 0x0200){ i += 1; }                                                              // METs
+    if(f & 0x0400){ if(need(2)){ d.elapsed = dv.getUint16(i,true); } i += 2; }            // Elapsed time (s)
+    if(f & 0x0800){ i += 2; }                                                              // Remaining time
+    if(f & 0x1000){ i += 4; }                                                              // Force + power
+  }catch(e){ log('parse error', e.message); }
+  return d;
+}
+function parseHrm(dv){
+  const f = dv.getUint8(0);
+  return (f & 0x01) ? dv.getUint16(1, true) : dv.getUint8(1);
+}
+
+// ---------- Bluetooth ----------
+const FTMS = 0x1826, C_DATA = 0x2acd, C_CP = 0x2ad9, C_STATUS = 0x2ada, C_SPD_RANGE = 0x2ad4, C_INC_RANGE = 0x2ad5;
+let dev = null, cp = null, cpQueue = Promise.resolve(), cpWaiters = [], hasControl = false, reconnecting = false;
+let speedRange = {min:1.0, max:16.0, inc:0.1}, inclRange = null;
+
+async function connectTreadmill(){
+  if(!navigator.bluetooth){ showBanner('Bluetooth is not available in this browser. On iPhone use Bluefy; on Mac use Chrome.'); return; }
+  try{
+    unlockAudio();
+    dev = await navigator.bluetooth.requestDevice({
+      filters:[{services:[FTMS]}, {namePrefix:'FS-'}],
+      optionalServices:[FTMS, 0xfff0, 'device_information']
+    });
+    log('Selected', dev.name || dev.id);
+    dev.addEventListener('gattserverdisconnected', onDisconnected);
+    await setupGatt();
+  }catch(e){ log('Connect failed:', e.message); if(!/cancel/i.test(e.message)) showBanner('Could not connect: ' + e.message); }
+}
+
+async function setupGatt(){
+  setPill('Connecting…', '');
+  const server = await dev.gatt.connect();
+  const svc = await server.getPrimaryService(FTMS);
+  log('FTMS service found');
+  const data = await svc.getCharacteristic(C_DATA);
+  data.addEventListener('characteristicvaluechanged', e => onTreadmillData(e.target.value));
+  await data.startNotifications();
+  log('Treadmill data notifications on');
+  try{
+    const s = await svc.getCharacteristic(C_STATUS);
+    s.addEventListener('characteristicvaluechanged', e => onStatus(e.target.value));
+    await s.startNotifications();
+  }catch(e){ log('No status char (ok)'); }
+  try{
+    const r = await (await svc.getCharacteristic(C_SPD_RANGE)).readValue();
+    speedRange = {min:r.getUint16(0,true)/100, max:r.getUint16(2,true)/100, inc:r.getUint16(4,true)/100 || 0.1};
+    log('Speed range', speedRange);
+  }catch(e){ log('No speed range char (ok)'); }
+  try{
+    const r = await (await svc.getCharacteristic(C_INC_RANGE)).readValue();
+    inclRange = {min:r.getInt16(0,true)/10, max:r.getInt16(2,true)/10, inc:r.getUint16(4,true)/10 || 1};
+    log('Incline range', inclRange);
+  }catch(e){ log('No incline range char (ok)'); }
+  try{
+    cp = await svc.getCharacteristic(C_CP);
+    cp.addEventListener('characteristicvaluechanged', e => onCpResponse(e.target.value));
+    await cp.startNotifications();   // indications — required before writing
+    log('Control point ready');
+  }catch(e){ cp = null; log('No control point — read-only mode', e.message); showBanner('Connected in read-only mode: this treadmill did not allow control.'); }
+  st.connected = true; st.demo = false; hasControl = false;
+  setPill('Connected · ' + (dev.name || 'treadmill'), 'ok');
+  document.getElementById('btnConnect').textContent = 'Disconnect';
+  if(cp) await requestControl();
+}
+
+function onDisconnected(){
+  log('Disconnected');
+  st.connected = false; hasControl = false; cp = null;
+  setPill('Disconnected', 'bad');
+  document.getElementById('btnConnect').textContent = 'Connect treadmill';
+  if(W.active){ speak('Treadmill disconnected. Use the treadmill buttons.'); showBanner('Treadmill disconnected. The belt keeps its current speed: use the treadmill console. Trying to reconnect…'); tryReconnect(); }
+}
+async function tryReconnect(){
+  if(reconnecting || !dev) return; reconnecting = true;
+  for(let n = 0; n < 5 && !st.connected; n++){
+    await sleep(2000);
+    try{ await setupGatt(); hideBanner(); speak('Reconnected'); }catch(e){ log('Reconnect attempt failed', e.message); }
+  }
+  reconnecting = false;
+}
+function disconnect(){ if(dev && dev.gatt.connected){ dev.removeEventListener('gattserverdisconnected', onDisconnected); dev.gatt.disconnect(); } st.connected = false; hasControl = false; cp = null; setPill('Not connected',''); document.getElementById('btnConnect').textContent = 'Connect treadmill'; }
+
+// Serialised control point writes, each awaiting its 0x80 response.
+const OP_NAMES = {0:'RequestControl',1:'Reset',2:'SetSpeed',3:'SetIncline',7:'Start',8:'Stop/Pause'};
+const RESULT = {1:'OK',2:'Not supported',3:'Invalid param',4:'Failed',5:'Control not permitted'};
+function cpWrite(bytes){
+  if(st.demo){ demoCommand(bytes); return Promise.resolve(1); }
+  if(!cp){ return Promise.resolve(0); }
+  const job = async () => {
+    const op = bytes[0];
+    const wait = new Promise(res => { cpWaiters.push({op, res}); setTimeout(() => res(-1), 3000); });
+    try{
+      const buf = new Uint8Array(bytes);
+      if(cp.writeValueWithResponse) await cp.writeValueWithResponse(buf); else await cp.writeValue(buf);
+    }catch(e){ log('CP write error', OP_NAMES[op], e.message); return 0; }
+    const r = await wait;
+    log('CP', OP_NAMES[op] || op, '→', r === -1 ? 'no response' : (RESULT[r] || r));
+    if(r === 5 && op !== 0){ hasControl = false; await requestControl(); }
+    return r;
+  };
+  cpQueue = cpQueue.then(job, job);
+  return cpQueue;
+}
+function onCpResponse(dv){
+  if(dv.getUint8(0) !== 0x80) return;
+  const op = dv.getUint8(1), res = dv.getUint8(2);
+  const idx = cpWaiters.findIndex(w => w.op === op);
+  if(idx >= 0){ cpWaiters[idx].res(res); cpWaiters.splice(idx,1); }
+}
+async function requestControl(){
+  const r = await cpWrite([0x00]);
+  hasControl = (r === 1 || r === -1);
+  if(r !== 1) log('Request control result', r);
+  return hasControl;
+}
+async function setSpeed(kmh){
+  kmh = Math.round(clamp(kmh, Math.max(speedRange.min, 0.5), Math.min(S.maxSpeed, speedRange.max)) * 10) / 10;
+  st.targetSpeed = kmh; renderTargets();
+  const v = Math.round(kmh * 100);
+  log('Set speed', kmh);
+  return cpWrite([0x02, v & 0xff, (v >> 8) & 0xff]);
+}
+async function setIncline(val){
+  if(inclRange) val = clamp(val, inclRange.min, inclRange.max);
+  val = Math.max(0, Math.round(val));
+  st.targetIncline = val; renderTargets();
+  const v = Math.round(val * 10) & 0xffff;
+  log('Set incline', val);
+  return cpWrite([0x03, v & 0xff, (v >> 8) & 0xff]);
+}
+async function startBelt(){ unlockAudio(); log('Start belt'); return cpWrite([0x07]); }
+async function stopBelt(){ log('STOP belt'); return cpWrite([0x08, 0x01]); }
+async function pauseBelt(){ log('Pause belt'); return cpWrite([0x08, 0x02]); }
+
+function onStatus(dv){
+  const code = dv.getUint8(0);
+  const names = {1:'Reset',2:'Stopped/paused by user',3:'Stopped (safety key)',4:'Started/resumed',5:'Target speed changed',6:'Target incline changed',0xff:'Control lost'};
+  log('Status:', names[code] || ('0x' + code.toString(16)), hex(dv));
+  if(code === 0xff){ hasControl = false; }
+  if(code === 3){ speak('Safety key pulled'); }
+  if(code === 5 && dv.byteLength >= 3){ st.targetSpeed = dv.getUint16(1,true)/100; renderTargets(); }
+}
+
+function onTreadmillData(dv){
+  const d = parseTreadmillData(dv);
+  if(d.speed !== undefined) st.speed = d.speed;
+  if(d.distance !== undefined) st.distance = d.distance;
+  if(d.incline !== undefined) st.incline = d.incline;
+  if(d.kcal !== undefined) st.kcal = d.kcal;
+  if(d.elapsed !== undefined) st.elapsed = d.elapsed;
+  if(d.hr !== undefined && (!st.hrSrc || st.hrSrc === 'treadmill')){ st.hr = d.hr; st.hrSrc = 'treadmill'; }
+  if(!st._logged || st._logged < 3){ log('Data', hex(dv), JSON.stringify(d)); st._logged = (st._logged||0) + 1; }
+}
+
+// ---------- Heart-rate monitor (optional) ----------
+let hrDev = null;
+async function connectHr(){
+  if(!navigator.bluetooth){ showBanner('Bluetooth is not available in this browser.'); return; }
+  try{
+    hrDev = await navigator.bluetooth.requestDevice({filters:[{services:['heart_rate']}]});
+    const srv = await hrDev.gatt.connect();
+    const ch = await (await srv.getPrimaryService('heart_rate')).getCharacteristic('heart_rate_measurement');
+    ch.addEventListener('characteristicvaluechanged', e => { st.hr = parseHrm(e.target.value); st.hrSrc = 'strap'; st.hrAt = Date.now(); });
+    await ch.startNotifications();
+    hrDev.addEventListener('gattserverdisconnected', () => { st.hrSrc = null; st.hr = null; log('HR monitor disconnected'); });
+    document.getElementById('btnHr').textContent = '❤️ ' + (hrDev.name || 'HR').slice(0,10);
+    log('HR monitor connected', hrDev.name);
+  }catch(e){ log('HR connect failed', e.message); }
+}
+
+// ---------- Workout engine ----------
+const W = { active:false, wk:null, steps:[], idx:0, stepSec:0, stepStartDist:0, warned:false, override:null,
+            guardSec:0, stepdowns:0, done:false };
+
+function startWorkout(wk){
+  if(W.active && !confirm('A workout is already running. Replace it?')) return;
+  if(wk.locked && !confirm('This one is Phase 3 and not unlocked in your plan yet (earliest early December). Start anyway?')) return;
+  if(!st.connected && !st.demo){ showBanner('Connect the treadmill first (or tap Demo to try it out).'); return; }
+  unlockAudio(); requestWakeLock();
+  Object.assign(W, {active:true, wk, steps:wk.steps.map(s => ({...s})), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
+  resetSession();
+  W.stepStartDist = curDist();
+  document.getElementById('wkCard').style.display = 'block';
+  speak('Starting ' + wk.name + '. Belt starting.');
+  (async () => {
+    if(!hasControl) await requestControl();
+    await startBelt();
+    await sleep(st.demo ? 500 : 3500);          // treadmill countdown
+    await applyStep(W.steps[0], true);
+  })();
+  renderWorkout();
+}
+
+async function applyStep(step, first){
+  if(!step) return;
+  const sp = Math.min(step.speed, S.maxSpeed);
+  await setSpeed(sp);
+  if(step.incline !== undefined && (step.incline !== st.targetIncline || first)) await setIncline(step.incline);
+}
+function curDist(){ return st.distance != null ? st.distance : st.ownDist; }
+
+function stepProgress(step){
+  if(step.kind === 'dist') return {done: curDist() - W.stepStartDist, total: step.value};
+  return {done: W.stepSec, total: step.value};
+}
+function stepRemainingSec(step){
+  const p = stepProgress(step);
+  if(step.kind === 'dist'){ const v = Math.max(st.speed, 0.5) / 3.6; return Math.max(0, (p.total - p.done) / v); }
+  return Math.max(0, p.total - p.done);
+}
+
+function workoutTick(dt){
+  if(!W.active || W.done) return;
+  const step = W.steps[W.idx];
+  const moving = st.speed > 0.3;
+  if(moving) W.stepSec += dt;
+  const rem = stepRemainingSec(step);
+  const next = W.steps[W.idx + 1];
+
+  if(!W.warned && rem <= 10 && moving){
+    W.warned = true;
+    if(next){
+      const nsp = Math.min(next.speed, S.maxSpeed);
+      const msg = nsp > currentStepSpeed() + 0.05 ? `Speeding up to ${nsp.toFixed(1)} in 10 seconds`
+                : nsp < currentStepSpeed() - 0.05 ? `Slowing to ${nsp.toFixed(1)} in 10 seconds`
+                : `Next: ${next.label} in 10 seconds`;
+      speak(msg); beep(2); flashCard();
+    } else { speak('10 seconds left'); }
+  }
+
+  // HR guard (only on steps faster than a walk)
+  if(S.guard && st.hr && currentStepSpeed() >= 5.0){
+    if(st.hr >= S.guardHr) W.guardSec += dt; else W.guardSec = Math.max(0, W.guardSec - dt);
+    if(W.guardSec >= S.guardSec){
+      W.guardSec = 0;
+      const ns = Math.max(4.0, Math.round((currentStepSpeed() - S.guardDrop) * 10) / 10);
+      W.override = ns; W.stepdowns++;
+      speak(`Heart rate high. Stepping down to ${ns.toFixed(1)}`); beep(3);
+      setSpeed(ns);
+      log('HR guard step-down to', ns);
+    }
+  }
+
+  const p = stepProgress(step);
+  if(p.done >= p.total) advanceStep();
+}
+function currentStepSpeed(){ return W.override != null ? W.override : W.steps[W.idx].speed; }
+
+function advanceStep(){
+  W.idx++; W.stepSec = 0; W.warned = false; W.override = null; W.guardSec = 0;
+  W.stepStartDist = curDist();
+  if(W.idx >= W.steps.length){ finishWorkout(); return; }
+  const s = W.steps[W.idx];
+  speak(`${s.label}. ${Math.min(s.speed, S.maxSpeed).toFixed(1)}`);
+  applyStep(s);
+  renderWorkout();
+}
+function skipStep(){ if(W.active && !W.done) advanceStep(); }
+
+function finishWorkout(manual){
+  if(!W.active) return;
+  W.done = true; W.active = false;
+  speak(manual ? 'Workout ended' : 'Workout complete. Well done.');
+  if(S.autoStop || manual) stopBelt();
+  saveSession(W.wk.name);
+  document.getElementById('wkCard').style.display = 'none';
+  releaseWakeLock();
+}
+
+// ---------- Session stats & history ----------
+function resetSession(){
+  Object.assign(st, {beltSec:0, ownDist:0, zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0, sessionStarted:true, sessionStartAt:new Date(), distAtStart: st.distance});
+}
+function sessionDistKm(){
+  if(st.distance != null && st.distAtStart != null) return Math.max(0, st.distance - st.distAtStart) / 1000;
+  if(st.distance != null && st.distAtStart == null) return st.distance / 1000;
+  return st.ownDist / 1000;
+}
+function saveSession(name){
+  if(st.beltSec < 60){ log('Session < 1 min, not saved'); return; }
+  const fmt = s => { s = Math.round(s); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+  const rec = {
+    date: st.sessionStartAt.toISOString().slice(0,10),
+    time: st.sessionStartAt.toTimeString().slice(0,5),
+    workout: name,
+    duration_min: +(st.beltSec/60).toFixed(2),
+    distance_km: +sessionDistKm().toFixed(2),
+    avg_speed: +(sessionDistKm() / (st.beltSec/3600) || 0).toFixed(2),
+    avg_hr: st.hrN ? Math.round(st.hrSum/st.hrN) : '',
+    max_hr: st.hrMax || '',
+    z1: fmt(st.zoneSec[0]), z2: fmt(st.zoneSec[1]), z3: fmt(st.zoneSec[2]), z4plus: fmt(st.zoneSec[3] + st.zoneSec[4]),
+    kcal: st.kcal ?? '',
+    stepdowns: W.stepdowns || 0,
+  };
+  const hist = load('pt_history', []); hist.unshift(rec); save('pt_history', hist);
+  renderHistory();
+  log('Saved session', rec);
+  if(S.hook) postHook(rec);
+  st.sessionStarted = false;
+}
+function postHook(rec){
+  fetch(S.hook, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(rec)})
+    .then(() => log('Sent to Google Sheets')).catch(e => log('Sheets send failed', e.message));
+}
+
+// ---------- Main tick ----------
+function tick(){
+  const now = Date.now(); const dt = Math.min(5, (now - st.lastTick) / 1000); st.lastTick = now;
+  if(st.demo) demoStep(dt);
+  if(st.speed > 0.3){
+    st.beltSec += dt;
+    st.ownDist += st.speed / 3.6 * dt;
+    if(st.hr){
+      const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += dt;
+      st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr);
+    }
+    if(!st.sessionStarted) resetSession();
+  }
+  if(st.hrSrc === 'strap' && st.hrAt && now - st.hrAt > 10000){ st.hr = null; }
+  workoutTick(dt);
+  render();
+}
+
+// ---------- Rendering ----------
+const $ = id => document.getElementById(id);
+function mmss(s){ s = Math.max(0, Math.round(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return (h ? h + ':' + String(m).padStart(2,'0') : String(m).padStart(2,'0')) + ':' + String(x).padStart(2,'0'); }
+function render(){
+  $('mSpeed').textContent = st.speed.toFixed(1);
+  $('mTime').textContent = mmss(st.beltSec);
+  $('mDist').textContent = sessionDistKm().toFixed(2);
+  $('mPace').textContent = st.speed > 0.5 ? mmss(3600 / st.speed) : '--:--';
+  $('mIncl').textContent = Math.round(st.incline);
+  $('mKcal').textContent = st.kcal != null ? st.kcal : '--';
+  const z = zoneOf(st.hr);
+  $('mHr').textContent = st.hr || '--';
+  $('mHr').style.color = z >= 0 ? ZONES[z].color : '';
+  $('mHrL').textContent = z >= 0 ? 'HR · ' + ZONES[z].name : 'HR';
+  const tot = st.zoneSec.reduce((a,b) => a+b, 0);
+  $('zoneBar').innerHTML = tot ? st.zoneSec.map((s,i) => `<div style="width:${s/tot*100}%;background:${ZONES[i].color}"></div>`).join('') : '';
+  if(W.active) renderWorkout();
+}
+function renderTargets(){ $('spTarget').textContent = st.targetSpeed.toFixed(1); $('inTarget').textContent = st.targetIncline; }
+function renderWorkout(){
+  if(!W.active) return;
+  const step = W.steps[W.idx]; if(!step) return;
+  const p = stepProgress(step);
+  const sp = currentStepSpeed();
+  $('wkName').textContent = W.wk.name + ` · step ${W.idx+1}/${W.steps.length}` + (W.stepdowns ? ` · ${W.stepdowns} step-down(s)` : '');
+  $('stepNow').textContent = `${step.label} · ${sp.toFixed(1)} km/h` + (step.incline ? ` · incline ${step.incline}` : '') + (W.override != null ? ' (stepped down)' : '');
+  $('stepProg').style.width = Math.min(100, p.done / p.total * 100) + '%';
+  $('stepLeft').textContent = step.kind === 'dist' ? `${((p.total - p.done)/1000).toFixed(2)} km left in step` : `${mmss(p.total - p.done)} left in step`;
+  let wkRem = stepRemainingSec(step);
+  for(let i = W.idx + 1; i < W.steps.length; i++){ const s = W.steps[i]; wkRem += s.kind === 'dist' ? s.value / (s.speed/3.6) : s.value; }
+  $('wkLeft').textContent = `${mmss(wkRem)} total left`;
+  const nx = W.steps[W.idx + 1];
+  $('stepNext').textContent = nx ? `Next: ${nx.label} · ${Math.min(nx.speed, S.maxSpeed).toFixed(1)} km/h` : 'Last step';
+  const durs = W.steps.map(s => s.kind === 'dist' ? s.value / (s.speed/3.6) : s.value);
+  const maxSp = Math.max(...W.steps.map(s => s.speed));
+  const totDur = durs.reduce((a,b) => a+b, 0);
+  $('stepsViz').innerHTML = W.steps.map((s,i) => `<div class="${i < W.idx ? 'done' : i === W.idx ? 'cur' : ''}" style="flex:${durs[i]/totDur};height:${30 + 70*s.speed/maxSp}%"></div>`).join('');
+}
+function renderWorkoutList(){
+  const custom = load('pt_custom', []);
+  const all = [...BUILTIN, ...custom.map(c => ({...c, custom:true}))];
+  $('wkList').innerHTML = all.map((w,i) => `
+    <div class="wk">
+      <div><h3>${esc(w.name)}${w.locked ? '<span class="tag">Phase 3, locked</span>' : ''}${w.custom ? '<span class="tag" style="color:var(--accent2);background:rgba(74,168,255,.15)">custom</span>' : ''}</h3>
+      <p>${esc(w.desc || describeSteps(w.steps))} · ~${Math.round(w.steps.reduce((a,s) => a + (s.kind==='dist' ? s.value/(s.speed/3.6) : s.value), 0)/60)} min</p></div>
+      <div class="row" style="flex-wrap:nowrap">
+        ${w.custom ? `<button class="ghost" data-del="${esc(w.id)}">✕</button>` : ''}
+        <button class="primary" data-start="${i}">Start</button>
+      </div>
+    </div>`).join('');
+  $('wkList').querySelectorAll('[data-start]').forEach(b => b.onclick = () => startWorkout(all[+b.dataset.start]));
+  $('wkList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    if(!confirm('Delete this custom workout?')) return;
+    save('pt_custom', load('pt_custom', []).filter(c => c.id !== b.dataset.del)); renderWorkoutList(); });
+}
+function describeSteps(steps){ return steps.map(s => (s.kind === 'dist' ? (s.value/1000) + 'km' : (s.value/60) + 'min') + '@' + s.speed).join(' → '); }
+function renderHistory(){
+  const h = load('pt_history', []);
+  if(!h.length){ $('histTable').innerHTML = '<div class="small">No sessions yet. Sessions longer than 1 minute are saved on this device.</div>'; return; }
+  $('histTable').innerHTML = `<table><tr><th>Date</th><th>Workout</th><th>Min</th><th>km</th><th>Avg HR</th><th>Max</th><th>Z4+</th></tr>` +
+    h.map(r => `<tr><td>${r.date}<br><span class="small">${r.time}</span></td><td>${esc(r.workout)}</td><td>${r.duration_min.toFixed(1)}</td><td>${r.distance_km.toFixed(2)}</td><td>${r.avg_hr}</td><td>${r.max_hr}</td><td>${r.z4plus}</td></tr>`).join('') + '</table>';
+}
+function exportCsv(){
+  const h = load('pt_history', []); if(!h.length) return;
+  const cols = Object.keys(h[0]);
+  const csv = [cols.join(',')].concat(h.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g,'""')}"`).join(','))).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'treadmill-history.csv'; a.click();
+}
+
+// ---------- Custom workouts ----------
+function parseCustom(text){
+  const steps = [];
+  for(const raw of text.split('\n')){
+    const line = raw.trim(); if(!line || line.startsWith('#')) continue;
+    const m = line.match(/^([\d.]+)\s*(km|m|min)?\s*@\s*([\d.]+)(?:\s+([\d.]+))?\s*(.*)$/i);
+    if(!m) throw new Error('Could not read: "' + line + '"');
+    const qty = parseFloat(m[1]), unit = (m[2] || 'min').toLowerCase(), sp = parseFloat(m[3]);
+    if(!(sp > 0) || sp > 16) throw new Error('Speed out of range in: "' + line + '"');
+    const step = {label: m[5] || (sp < 5 ? 'Walk' : 'Run'), speed: sp, incline: m[4] ? parseFloat(m[4]) : 0};
+    if(unit === 'km'){ step.kind = 'dist'; step.value = qty * 1000; }
+    else if(unit === 'm'){ step.kind = 'dist'; step.value = qty; }
+    else { step.kind = 'time'; step.value = qty * 60; }
+    steps.push(step);
+  }
+  if(!steps.length) throw new Error('Add at least one step.');
+  return steps;
+}
+function customFromForm(){
+  const steps = parseCustom($('cSteps').value);
+  return {id:'c' + Date.now(), name: $('cName').value.trim() || 'Custom workout', steps};
+}
+
+// ---------- Audio / voice / wake lock ----------
+let actx = null;
+function unlockAudio(){ try{ if(!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if(actx.state === 'suspended') actx.resume(); }catch(e){} }
+function beep(n = 1){
+  if(!actx) return;
+  for(let i = 0; i < n; i++){
+    const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 880;
+    o.connect(g); g.connect(actx.destination);
+    const t = actx.currentTime + i * 0.25; g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.start(t); o.stop(t + 0.2);
+  }
+}
+function speak(text){
+  log('🔊', text);
+  if(!S.voice || !window.speechSynthesis) return;
+  try{ const u = new SpeechSynthesisUtterance(text); u.lang = 'en-IN'; u.rate = 1.0; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){}
+}
+let wakeLock = null;
+async function requestWakeLock(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+function releaseWakeLock(){ try{ wakeLock && wakeLock.release(); wakeLock = null; }catch(e){} }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && W.active) requestWakeLock(); });
+
+// ---------- Demo mode (simulated treadmill, for trying the app) ----------
+const demo = {target:0, running:false, hr:95, dist:0};
+function startDemo(){
+  if(st.connected) return;
+  st.demo = !st.demo;
+  if(st.demo){ setPill('Demo mode', 'ok'); $('btnDemo').textContent = 'Exit demo'; st.hrSrc = 'demo'; demo.dist = 0; st.distance = 0; log('Demo mode on'); }
+  else { setPill('Not connected', ''); $('btnDemo').textContent = 'Demo'; Object.assign(st, {speed:0, hr:null, hrSrc:null, distance:null}); log('Demo mode off'); }
+}
+function demoCommand(b){
+  const op = b[0];
+  if(op === 7){ demo.running = true; if(!demo.target) demo.target = 1.0; }
+  if(op === 8){ demo.running = false; demo.target = 0; }
+  if(op === 2){ demo.target = (b[1] | (b[2] << 8)) / 100; demo.running = true; }
+  if(op === 3){ st.incline = ((b[1] | (b[2] << 8)) << 16 >> 16) / 10; }
+  log('[demo] CP', OP_NAMES[op] || op, Array.from(b).join(','));
+}
+function demoStep(dt){
+  const tgt = demo.running ? demo.target : 0;
+  const k = Math.min(1, dt * 0.8);
+  st.speed = Math.max(0, st.speed + (tgt - st.speed) * k);
+  if(st.speed < 0.05) st.speed = 0;
+  demo.dist += st.speed / 3.6 * dt; st.distance = Math.round(demo.dist);
+  const hrTarget = st.speed < 0.3 ? 85 : 70 + st.speed * 14 + st.incline * 2.5;
+  demo.hr += (hrTarget - demo.hr) * Math.min(1, dt * 0.05) + (Math.random() - 0.5);
+  st.hr = Math.round(demo.hr);
+  st.kcal = Math.round(demo.dist / 1000 * 75);
+}
+
+// ---------- Helpers ----------
+function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function setPill(t, cls){ const p = $('connPill'); p.textContent = t; p.className = 'pill ' + (cls || ''); }
+function showBanner(t){ const b = $('alertBanner'); b.textContent = t; b.classList.add('show'); }
+function hideBanner(){ $('alertBanner').classList.remove('show'); }
+function flashCard(){ const c = $('wkCard'); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
+
+// ---------- Wire up UI ----------
+function init(){
+  if(!navigator.bluetooth) $('unsupported').classList.add('show');
+  $('btnConnect').onclick = () => st.connected ? disconnect() : connectTreadmill();
+  $('btnHr').onclick = connectHr;
+  $('btnDemo').onclick = startDemo;
+  $('btnStop').onclick = () => { if(W.active) finishWorkout(true); else { stopBelt(); if(st.sessionStarted) saveSession('Manual'); } };
+  $('btnSkip').onclick = skipStep;
+  $('btnEndWk').onclick = () => { if(confirm('End the workout now? The session will be saved.')) finishWorkout(true); };
+  $('alertBanner').onclick = hideBanner;
+
+  const bump = d => { const base = st.targetSpeed || st.speed || 1; setSpeed(base + d); if(W.active){ W.override = st.targetSpeed; } };
+  $('spUp').onclick = () => bump(0.1);
+  $('spDown').onclick = () => bump(-0.1);
+  $('speedPresets').innerHTML = [4.0, 5.0, 5.5, 5.8, 6.0].map(v => `<button data-sp="${v}">${v.toFixed(1)}</button>`).join('');
+  $('speedPresets').querySelectorAll('button').forEach(b => b.onclick = () => { setSpeed(+b.dataset.sp); if(W.active) W.override = +b.dataset.sp; });
+  $('inUp').onclick = () => setIncline(st.targetIncline + 1);
+  $('inDown').onclick = () => setIncline(st.targetIncline - 1);
+  $('btnStartBelt').onclick = async () => { if(!hasControl) await requestControl(); await startBelt(); };
+  $('btnPauseBelt').onclick = pauseBelt;
+
+  $('btnCustomSave').onclick = () => { try{ const c = customFromForm(); const l = load('pt_custom', []); l.push(c); save('pt_custom', l); renderWorkoutList(); showBanner('Saved: ' + c.name); }catch(e){ showBanner(e.message); } };
+  $('btnCustomStart').onclick = () => { try{ startWorkout(customFromForm()); }catch(e){ showBanner(e.message); } };
+
+  $('btnCsv').onclick = exportCsv;
+  $('btnClearHist').onclick = () => { if(confirm('Delete all saved sessions on this device?')){ save('pt_history', []); renderHistory(); } };
+
+  const fields = {sMaxSpeed:'maxSpeed', sGuardHr:'guardHr', sGuardSec:'guardSec', sGuardDrop:'guardDrop', sHook:'hook'};
+  const checks = {sGuard:'guard', sAutoStop:'autoStop', sVoice:'voice'};
+  for(const [id,k] of Object.entries(fields)) $(id).value = S[k];
+  for(const [id,k] of Object.entries(checks)) $(id).checked = !!S[k];
+  $('btnSaveSettings').onclick = () => {
+    for(const [id,k] of Object.entries(fields)) S[k] = k === 'hook' ? $(id).value.trim() : parseFloat($(id).value) || DEFAULTS[k];
+    for(const [id,k] of Object.entries(checks)) S[k] = $(id).checked;
+    S.maxSpeed = clamp(S.maxSpeed, 1, 16);
+    save('pt_settings', S); showBanner('Settings saved');
+  };
+  $('btnTestHook').onclick = () => { S.hook = $('sHook').value.trim(); if(!S.hook) return showBanner('Paste the Apps Script URL first');
+    postHook({date:new Date().toISOString().slice(0,10), time:new Date().toTimeString().slice(0,5), workout:'TEST ROW', duration_min:0, distance_km:0}); showBanner('Test row sent: check your sheet'); };
+  $('btnCopyLog').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(logLines.join('\n')).then(() => showBanner('Log copied')); };
+
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
+    window.scrollTo({top:0});
+  });
+
+  renderWorkoutList(); renderHistory(); renderTargets();
+  setInterval(tick, 1000);
+  log('Ready. Bluetooth ' + (navigator.bluetooth ? 'available' : 'NOT available') + ' in this browser.');
+}
+window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault(); e.returnValue = ''; } });
+init();
+
+// Expose for testing
+window.__pt = {parseTreadmillData, parseCustom, st, W, BUILTIN, demo};
+</script>
+</body>
+</html>
