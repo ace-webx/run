@@ -315,7 +315,10 @@ function parseHrm(dv){
 }
 
 // ---------- Bluetooth ----------
-const FTMS = 0x1826, C_DATA = 0x2acd, C_CP = 0x2ad9, C_STATUS = 0x2ada, C_SPD_RANGE = 0x2ad4, C_INC_RANGE = 0x2ad5;
+const U = n => '0000' + n.toString(16).padStart(4,'0') + '-0000-1000-8000-00805f9b34fb';   // full 128-bit UUIDs (Bluefy-safe)
+const FTMS = U(0x1826), C_DATA = U(0x2acd), C_CP = U(0x2ad9), C_STATUS = U(0x2ada), C_SPD_RANGE = U(0x2ad4), C_INC_RANGE = U(0x2ad5), FFF0 = U(0xfff0);
+const errText = e => (e && (e.message || e.name)) ? ((e.name ? e.name + ': ' : '') + (e.message || '')) : String(e);
+let stage = '';
 let dev = null, cp = null, cpQueue = Promise.resolve(), cpWaiters = [], hasControl = false, reconnecting = false;
 let speedRange = {min:1.0, max:16.0, inc:0.1}, inclRange = null;
 
@@ -324,21 +327,26 @@ async function connectTreadmill(showAll){
   try{
     unlockAudio();
     const opts = showAll
-      ? {acceptAllDevices:true, optionalServices:[FTMS, 0xfff0, 'device_information']}
-      : {filters:[{services:[FTMS]}, {namePrefix:'FS-'}, {namePrefix:'FS'}], optionalServices:[FTMS, 0xfff0, 'device_information']};
+      ? {acceptAllDevices:true, optionalServices:[FTMS, FFF0]}
+      : {filters:[{services:[FTMS]}, {namePrefix:'FS'}], optionalServices:[FTMS, FFF0]};
     log('Scanning', showAll ? '(all devices)' : '(FTMS / FS- filter)');
+    stage = 'device chooser';
     dev = await navigator.bluetooth.requestDevice(opts);
     log('Selected', dev.name || dev.id);
     dev.addEventListener('gattserverdisconnected', onDisconnected);
     await setupGatt();
-  }catch(e){ log('Connect failed:', e.message); if(!/cancel/i.test(e.message)) showBanner('Could not connect: ' + e.message); }
+  }catch(e){ const t = errText(e); log('Connect failed at [' + stage + ']:', t); if(!/cancel/i.test(t)) showBanner('Could not connect (' + stage + '): ' + t + '. Open Settings → Bluetooth log → Copy, and send it to Claude.'); }
 }
 
 async function setupGatt(){
   setPill('Connecting…', '');
+  stage = 'GATT connect'; log('Connecting GATT…');
   const server = await dev.gatt.connect();
+  log('GATT connected');
+  stage = 'FTMS service';
   const svc = await server.getPrimaryService(FTMS);
   log('FTMS service found');
+  stage = 'treadmill data';
   const data = await svc.getCharacteristic(C_DATA);
   data.addEventListener('characteristicvaluechanged', e => onTreadmillData(e.target.value));
   await data.startNotifications();
@@ -347,7 +355,7 @@ async function setupGatt(){
     const s = await svc.getCharacteristic(C_STATUS);
     s.addEventListener('characteristicvaluechanged', e => onStatus(e.target.value));
     await s.startNotifications();
-  }catch(e){ log('No status char (ok)'); }
+  }catch(e){ log('No status char (ok)', errText(e)); }
   try{
     const r = await (await svc.getCharacteristic(C_SPD_RANGE)).readValue();
     speedRange = {min:r.getUint16(0,true)/100, max:r.getUint16(2,true)/100, inc:r.getUint16(4,true)/100 || 0.1};
@@ -363,7 +371,7 @@ async function setupGatt(){
     cp.addEventListener('characteristicvaluechanged', e => onCpResponse(e.target.value));
     await cp.startNotifications();   // indications — required before writing
     log('Control point ready');
-  }catch(e){ cp = null; log('No control point — read-only mode', e.message); showBanner('Connected in read-only mode: this treadmill did not allow control.'); }
+  }catch(e){ cp = null; log('No control point — read-only mode', errText(e)); showBanner('Connected in read-only mode: this treadmill did not allow control.'); }
   st.connected = true; st.demo = false; hasControl = false;
   setPill('Connected · ' + (dev.name || 'treadmill'), 'ok');
   document.getElementById('btnConnect').textContent = 'Disconnect';
@@ -381,7 +389,7 @@ async function tryReconnect(){
   if(reconnecting || !dev) return; reconnecting = true;
   for(let n = 0; n < 5 && !st.connected; n++){
     await sleep(2000);
-    try{ await setupGatt(); hideBanner(); speak('Reconnected'); }catch(e){ log('Reconnect attempt failed', e.message); }
+    try{ await setupGatt(); hideBanner(); speak('Reconnected'); }catch(e){ log('Reconnect attempt failed', errText(e)); }
   }
   reconnecting = false;
 }
@@ -399,7 +407,7 @@ function cpWrite(bytes){
     try{
       const buf = new Uint8Array(bytes);
       if(cp.writeValueWithResponse) await cp.writeValueWithResponse(buf); else await cp.writeValue(buf);
-    }catch(e){ log('CP write error', OP_NAMES[op], e.message); return 0; }
+    }catch(e){ log('CP write error', OP_NAMES[op], errText(e)); return 0; }
     const r = await wait;
     log('CP', OP_NAMES[op] || op, '→', r === -1 ? 'no response' : (RESULT[r] || r));
     if(r === 5 && op !== 0){ hasControl = false; await requestControl(); }
@@ -464,15 +472,15 @@ let hrDev = null;
 async function connectHr(){
   if(!navigator.bluetooth){ showBanner('Bluetooth is not available in this browser.'); return; }
   try{
-    hrDev = await navigator.bluetooth.requestDevice({filters:[{services:['heart_rate']}]});
+    hrDev = await navigator.bluetooth.requestDevice({filters:[{services:[U(0x180d)]}]});
     const srv = await hrDev.gatt.connect();
-    const ch = await (await srv.getPrimaryService('heart_rate')).getCharacteristic('heart_rate_measurement');
+    const ch = await (await srv.getPrimaryService(U(0x180d))).getCharacteristic(U(0x2a37));
     ch.addEventListener('characteristicvaluechanged', e => { st.hr = parseHrm(e.target.value); st.hrSrc = 'strap'; st.hrAt = Date.now(); });
     await ch.startNotifications();
     hrDev.addEventListener('gattserverdisconnected', () => { st.hrSrc = null; st.hr = null; log('HR monitor disconnected'); });
     document.getElementById('btnHr').textContent = '❤️ ' + (hrDev.name || 'HR').slice(0,10);
     log('HR monitor connected', hrDev.name);
-  }catch(e){ log('HR connect failed', e.message); }
+  }catch(e){ log('HR connect failed', errText(e)); }
 }
 
 // ---------- Workout engine ----------
@@ -831,6 +839,7 @@ function init(){
 
   renderWorkoutList(); renderHistory(); renderTargets();
   setInterval(tick, 1000);
+  log('UA: ' + navigator.userAgent.slice(0,120));
   log('Ready. Bluetooth ' + (navigator.bluetooth ? 'available' : 'NOT available') + ' in this browser.');
 }
 window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault(); e.returnValue = ''; } });
