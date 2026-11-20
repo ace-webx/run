@@ -14,7 +14,7 @@
     --z1:#9ca3af; --z2:#16a34a; --z3:#ca8a04; --z4:#ea580c; --z5:#dc2626;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;background:var(--bg);color:var(--text);
+  html,body{margin:0;background:var(--bg);color:var(--text);overscroll-behavior:none;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
   body{padding:env(safe-area-inset-top) 12px calc(env(safe-area-inset-bottom) + 90px);max-width:720px;margin:0 auto}
   header{display:flex;align-items:center;justify-content:space-between;padding:12px 2px}
@@ -94,6 +94,13 @@
   You can still try <b>Demo mode</b> below.
 </div>
 <div id="alertBanner" class="banner"></div>
+<div id="resumeCard" class="banner" style="background:#e8f5ec;border-color:#b7e1c4;color:#14532d">
+  <div id="resumeText"></div>
+  <div class="row" style="margin-top:8px">
+    <button class="primary grow" id="btnResume">Reconnect &amp; resume</button>
+    <button class="ghost" id="btnDiscard">Discard</button>
+  </div>
+</div>
 
 <div class="row">
   <button id="btnConnect" class="primary grow">Connect treadmill</button>
@@ -376,6 +383,7 @@ async function setupGatt(){
   setPill('Connected · ' + (dev.name || 'treadmill'), 'ok');
   document.getElementById('btnConnect').textContent = 'Disconnect';
   if(cp) await requestControl();
+  if(pendingSnap) resumeArmed = true;
 }
 
 function onDisconnected(){
@@ -465,6 +473,7 @@ function onTreadmillData(dv){
   if(d.elapsed !== undefined) st.elapsed = d.elapsed;
   if(d.hr !== undefined && (!st.hrSrc || st.hrSrc === 'treadmill')){ st.hr = d.hr; st.hrSrc = 'treadmill'; }
   if(!st._logged || st._logged < 3){ log('Data', hex(dv), JSON.stringify(d)); st._logged = (st._logged||0) + 1; }
+  if(pendingSnap && resumeArmed) doResume();
 }
 
 // ---------- Heart-rate monitor (optional) ----------
@@ -493,6 +502,7 @@ function startWorkout(wk){
   if(!st.connected && !st.demo){ showBanner('Connect the treadmill first (or tap Demo to try it out).'); return; }
   unlockAudio(); requestWakeLock();
   Object.assign(W, {active:true, wk, steps:wk.steps.map(s => ({...s})), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
+  clearLive();
   resetSession();
   W.stepStartDist = curDist();
   document.getElementById('wkCard').style.display = 'block';
@@ -578,13 +588,18 @@ function finishWorkout(manual){
   speak(manual ? 'Workout ended' : 'Workout complete. Well done.');
   if(S.autoStop || manual) stopBelt();
   saveSession(W.wk.name);
+  clearLive();
   document.getElementById('wkCard').style.display = 'none';
   releaseWakeLock();
 }
 
 // ---------- Session stats & history ----------
 function resetSession(){
-  Object.assign(st, {beltSec:0, ownDist:0, zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0, sessionStarted:true, sessionStartAt:new Date(), distAtStart: st.distance});
+  Object.assign(st, {beltSec:0, ownDist:0, zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0, sessionStarted:true, sessionStartAt:new Date(), distAtStart: st.distance, kcalAtStart: st.kcal});
+}
+function sessionKcal(){
+  if(st.kcal == null) return null;
+  return st.kcalAtStart == null ? st.kcal : Math.max(0, st.kcal - st.kcalAtStart);
 }
 function sessionDistKm(){
   if(st.distance != null && st.distAtStart != null) return Math.max(0, st.distance - st.distAtStart) / 1000;
@@ -604,7 +619,7 @@ function saveSession(name){
     avg_hr: st.hrN ? Math.round(st.hrSum/st.hrN) : '',
     max_hr: st.hrMax || '',
     z1: fmt(st.zoneSec[0]), z2: fmt(st.zoneSec[1]), z3: fmt(st.zoneSec[2]), z4plus: fmt(st.zoneSec[3] + st.zoneSec[4]),
-    kcal: st.kcal ?? '',
+    kcal: sessionKcal() ?? '',
     stepdowns: W.stepdowns || 0,
   };
   const hist = load('pt_history', []); hist.unshift(rec); save('pt_history', hist);
@@ -612,10 +627,67 @@ function saveSession(name){
   log('Saved session', rec);
   if(S.hook) postHook(rec);
   st.sessionStarted = false;
+  clearLive();
 }
 function postHook(rec){
   fetch(S.hook, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(rec)})
     .then(() => log('Sent to Google Sheets')).catch(e => log('Sheets send failed', e.message));
+}
+
+// ---------- Refresh-proof: live snapshot + resume ----------
+let pendingSnap = null, resumeArmed = false;
+const LIVE_MAX_AGE = 45 * 60 * 1000;
+function saveLive(){
+  if(st.demo || !(W.active || st.sessionStarted)) return;
+  save('pt_live', {
+    savedAt: Date.now(),
+    wk: W.active ? {name: W.wk.name, steps: W.steps} : null,
+    idx: W.idx, stepSec: W.stepSec, stepStartDist: W.stepStartDist, override: W.override, stepdowns: W.stepdowns,
+    beltSec: st.beltSec, ownDist: st.ownDist, zoneSec: st.zoneSec, hrSum: st.hrSum, hrN: st.hrN, hrMax: st.hrMax,
+    sessionStartAt: st.sessionStartAt, distAtStart: st.distAtStart, kcalAtStart: st.kcalAtStart,
+    tmDist: st.distance, tmKcal: st.kcal, tmElapsed: st.elapsed,
+  });
+}
+function clearLive(){ try{ localStorage.removeItem('pt_live'); }catch(e){} pendingSnap = null; resumeArmed = false; $('resumeCard').classList.remove('show'); }
+function checkLive(){
+  const snap = load('pt_live', null);
+  if(!snap) return;
+  if(Date.now() - snap.savedAt > LIVE_MAX_AGE){ clearLive(); return; }
+  pendingSnap = snap;
+  const what = snap.wk ? `<b>${esc(snap.wk.name)}</b>, step ${snap.idx + 1}/${snap.wk.steps.length}` : '<b>a manual session</b>';
+  $('resumeText').innerHTML = `Unfinished ${what} found (${mmss(snap.beltSec)} done). Connect to carry on from where you were.`;
+  $('resumeCard').classList.add('show');
+}
+function doResume(){
+  const snap = pendingSnap; pendingSnap = null; resumeArmed = false;
+  $('resumeCard').classList.remove('show');
+  // Time the page was gone: prefer the treadmill's own elapsed counter, else wall clock if the belt is moving
+  let gap = 0;
+  if(snap.tmElapsed != null && st.elapsed != null && st.elapsed >= snap.tmElapsed) gap = st.elapsed - snap.tmElapsed;
+  else if(st.speed > 0.3) gap = (Date.now() - snap.savedAt) / 1000;
+  gap = Math.max(0, Math.min(gap, LIVE_MAX_AGE / 1000));
+  Object.assign(st, {
+    beltSec: snap.beltSec + gap, ownDist: snap.ownDist, zoneSec: snap.zoneSec, hrSum: snap.hrSum, hrN: snap.hrN, hrMax: snap.hrMax,
+    sessionStarted: true, sessionStartAt: new Date(snap.sessionStartAt),
+    distAtStart: snap.distAtStart, kcalAtStart: snap.kcalAtStart, lastTick: Date.now(),
+  });
+  let stepStartDist = snap.stepStartDist;
+  if(st.distance != null && snap.tmDist != null){
+    if(st.distance < snap.tmDist){            // treadmill counters were reset meanwhile: shift baselines
+      st.distAtStart = (snap.distAtStart ?? 0) - snap.tmDist;
+      stepStartDist = stepStartDist - snap.tmDist;
+    }
+  } else { st.ownDist += st.speed / 3.6 * gap; }
+  if(st.kcal != null && snap.tmKcal != null && st.kcal < snap.tmKcal) st.kcalAtStart = (snap.kcalAtStart ?? 0) - snap.tmKcal;
+  if(snap.wk){
+    Object.assign(W, {active:true, done:false, wk:{name:snap.wk.name, steps:snap.wk.steps}, steps:snap.wk.steps, idx:snap.idx,
+      stepSec: snap.stepSec + gap, stepStartDist, override: snap.override, stepdowns: snap.stepdowns, warned:false, guardSec:0});
+    $('wkCard').style.display = 'block';
+    requestWakeLock();
+    renderWorkout();
+    speak('Workout resumed');
+  } else { speak('Session resumed'); }
+  log('Resumed session; gap', Math.round(gap) + 's');
 }
 
 // ---------- Main tick ----------
@@ -629,10 +701,11 @@ function tick(){
       const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += dt;
       st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr);
     }
-    if(!st.sessionStarted) resetSession();
+    if(!st.sessionStarted && !pendingSnap) resetSession();
   }
   if(st.hrSrc === 'strap' && st.hrAt && now - st.hrAt > 10000){ st.hr = null; }
   workoutTick(dt);
+  saveLive();
   render();
 }
 
@@ -647,7 +720,7 @@ function render(){
   $('mDist').textContent = sessionDistKm().toFixed(2);
   $('mPace').textContent = st.speed > 0.5 ? mmss(3600 / st.speed) : '--:--';
   $('mIncl').textContent = Math.round(st.incline);
-  $('mKcal').textContent = st.kcal != null ? st.kcal : '--';
+  const kc = sessionKcal(); $('mKcal').textContent = kc != null ? kc : '--';
   const z = zoneOf(st.hr);
   $('mHr').textContent = st.hr || '--';
   $('mHr').style.color = z >= 0 ? ZONES[z].color : '';
@@ -838,7 +911,10 @@ function init(){
     window.scrollTo({top:0});
   });
 
+  $('btnResume').onclick = () => { if(st.connected){ resumeArmed = true; } else connectTreadmill(); };
+  $('btnDiscard').onclick = () => { if(confirm('Discard the unfinished session?')) clearLive(); };
   renderWorkoutList(); renderHistory(); renderTargets();
+  checkLive();
   setInterval(tick, 1000);
   log('UA: ' + navigator.userAgent.slice(0,120));
   log('Ready. Bluetooth ' + (navigator.bluetooth ? 'available' : 'NOT available') + ' in this browser.');
@@ -847,7 +923,7 @@ window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault();
 init();
 
 // Expose for testing
-window.__pt = {parseTreadmillData, parseCustom, st, W, BUILTIN, demo};
+window.__pt = {parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
 </script>
 </body>
 </html>
