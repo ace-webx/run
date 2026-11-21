@@ -146,6 +146,7 @@
   .sgrid label{margin:2px 0}
   .ib{padding:8px 10px;background:var(--card2)}
   .wk .acts{display:flex;gap:6px;flex-wrap:nowrap}
+  .stbl td,.stbl th{padding:8px 4px;vertical-align:top}.stbl tr:active{background:var(--card2)}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:flex;align-items:flex-end;justify-content:center}
   .sheet{background:var(--bg);width:100%;max-width:720px;max-height:94vh;overflow:auto;border-radius:22px 22px 0 0;padding:16px 12px calc(env(safe-area-inset-bottom) + 18px);-webkit-overflow-scrolling:touch}
   .sheet h2{margin:2px 0 2px;font-size:24px}
@@ -314,13 +315,15 @@
     <div id="trendLegend" class="legend"></div><div id="chTrend"></div>
     <div class="note">Average HR covers the whole session, including warm-up and cool-down, so only compare sessions with the same structure.</div></div>
   <div class="card"><div class="h3">Recovery: HR 1 minute after the workout</div><div class="small">Lower = faster recovery. 5K benchmarks left out (no cool-down, so not comparable).</div><div id="chRecovery"></div></div>
-  <div class="card"><div class="h3">Sessions in this period</div><div id="repTable" style="overflow-x:auto"></div></div>
+  <div class="card"><div class="row" style="justify-content:space-between;align-items:center"><div class="h3" style="margin:0">Sessions in this period</div><button class="blue" id="btnAddSession" style="padding:8px 12px">＋ Add session</button></div>
+    <div class="small" style="margin:4px 0 6px">Tap a session (or ✎ Edit) to add or change heart rate, zones, weather, time and notes. Use ＋ Add session for runs done without the app (outdoor runs, gym).</div>
+    <div id="repTable" style="overflow-x:auto"></div></div>
   <div class="card">
     <div class="row" style="justify-content:space-between;align-items:center">
       <div class="h3" style="margin:0">All sessions</div>
       <div class="row"><button class="ghost" id="btnCsv">Export CSV</button><button class="ghost" id="btnClearHist">Clear device</button></div>
     </div>
-    <div class="small">✕ deletes a session everywhere (including the Google Sheet).</div>
+    <div class="small">Tap a session to edit it. Delete is inside the edit screen.</div>
     <div id="histTable" style="margin-top:10px;overflow-x:auto"></div>
   </div>
 </div>
@@ -874,17 +877,22 @@ function openSummary(rec, editing){
   SUM = {rec: {...rec}, cond: c, notes: rest, editing, touched: new Set(), openedAt: Date.now()};
   const r = SUM.rec, F = (k, label, val, type = 'number', step = '1') =>
     `<div><label>${label}</label><input data-k="${k}" type="${type}" inputmode="decimal" step="${step}" value="${val === '' || val == null ? '' : esc(String(val))}"></div>`;
+  const isNew = editing === 'new';
+  const missing = editing && !isNew ? [r.avg_hr === '' && 'heart rate', r.z1_min === '' && 'zone times', !c.temp && c.temp !== 0 && 'weather', !r.time && 'start time'].filter(Boolean) : [];
   $('sumSheet').innerHTML = `
-    <div class="small">${editing ? 'EDIT SESSION' : 'WORKOUT COMPLETE'}</div>
-    <h2>${editing ? '✎ ' : '🎉 '}${esc(r.workout)}</h2>
+    <div class="small">${isNew ? 'ADD A SESSION DONE WITHOUT THE APP' : editing ? 'EDIT SESSION' : 'WORKOUT COMPLETE'}</div>
+    <h2>${isNew ? '＋ New session' : (editing ? '✎ ' : '🎉 ') + esc(r.workout)}</h2>
+    ${missing.length ? `<div class="banner show" style="margin:6px 0">Missing: ${missing.join(', ')}. Fill in what you have (e.g. from the Apple Watch workout); everything is optional.</div>` : ''}
     <div class="metrics" id="sumHero" style="margin:10px 0"></div>
     <div class="card" id="sumCheck" style="display:none"></div>
     <div class="card"><div class="h3">Session</div>
-      <label>Name</label><input data-k="workout" type="text" value="${esc(r.workout)}">
+      <label>Name</label><input data-k="workout" type="text" list="sessNames" placeholder="e.g. Outdoor run" value="${esc(r.workout)}">
+      <datalist id="sessNames">${['Outdoor run','Outdoor walk','Treadmill run','Treadmill walk','Zone 2 — 30 min','Incline walk', ...allWorkouts().map(w => w.name)].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       <div class="fgrid">${F('date','Date', r.date, 'date')}${F('time','Start time', r.time, 'time')}</div></div>
     <div class="card"><div class="h3">Distance &amp; time</div><div class="small">Check against the treadmill console and correct if needed.</div>
       <div class="fgrid">${F('distance_km','Distance (km)', r.distance_km, 'number', '0.01')}${F('duration_min','Duration (mm:ss)', minToMmss(r.duration_min), 'text')}
-      ${F('run_min','Of which running (mm:ss)', minToMmss(r.run_min), 'text')}${F('kcal','Calories', r.kcal)}</div></div>
+      ${F('run_min','Of which running (mm:ss)', minToMmss(r.run_min), 'text')}${F('kcal','Calories', r.kcal)}</div>
+      <div class="row" style="margin-top:8px"><button class="ghost grow small" id="sumAllRun">🏃 All running</button><button class="ghost grow small" id="sumAllWalk">🚶 All walking</button></div></div>
     <div class="card"><div class="h3">Heart rate</div><div class="small" id="recNote"></div>
       <div class="fgrid">${F('avg_hr','Average', r.avg_hr)}${F('max_hr','Max', r.max_hr)}${F('end_hr','At workout end', r.end_hr)}${F('recovery_hr','1 min after', r.recovery_hr)}</div>
       <label style="margin-top:10px">Time in zones (mm:ss)</label>
@@ -901,8 +909,9 @@ function openSummary(rec, editing){
     <div class="card"><div class="h3">Notes</div><textarea id="sumNotes" style="min-height:70px" placeholder="How did it feel? Anything unusual?">${esc(rest)}</textarea></div>
     <div class="row" style="margin:6px 0 4px">
       <button class="ghost grow" id="sumDiscard">${editing ? 'Cancel' : 'Discard'}</button>
-      <button class="primary grow" id="sumSave" style="flex:2">${editing ? 'Save changes' : 'Save session'}</button>
-    </div>`;
+      <button class="primary grow" id="sumSave" style="flex:2">${isNew ? 'Add session' : editing ? 'Save changes' : 'Save session'}</button>
+    </div>
+    ${editing && !isNew ? '<button class="ghost" id="sumDelete" style="width:100%;color:var(--danger);margin-top:4px">Delete this session</button>' : ''}`;
   $('sumOverlay').style.display = 'flex'; $('sumSheet').scrollTop = 0;
   const sh = $('sumSheet');
   sh.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
@@ -916,14 +925,18 @@ function openSummary(rec, editing){
   sh.querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => {
     const k = g.dataset.cseg; SUM.cond[k] = SUM.cond[k] === b.dataset.v ? '' : b.dataset.v; sumDerived(); }));
   $('sumSave').onclick = saveSummary;
+  if($('sumDelete')) $('sumDelete').onclick = () => { if(!confirm('Delete "' + SUM.rec.workout + '"' + (Sync.configured() ? ' (also from the Google Sheet)' : '') + '?')) return; const id = SUM.rec.id; closeSummary(); deleteSession(id); showBanner('Session deleted'); };
+  $('sumAllRun').onclick = () => { if(SUM.rec.duration_min === '') return showBanner('Enter the duration first.'); setSumField('run_min', SUM.rec.duration_min); SUM.rec.run_speed = ''; };
+  $('sumAllWalk').onclick = () => { setSumField('run_min', 0); SUM.rec.run_speed = ''; };
   $('sumDiscard').onclick = () => {
     if(!editing && !confirm('Discard this session? It will not be saved.')) return;
+    if(isNew){ closeSummary(); return; }
     if(!editing) try{ localStorage.removeItem('pt_pending'); }catch(e){}
     closeSummary();
   };
   sumDerived();
 }
-function setSumField(k, v){ if(!SUM) return; SUM.rec[k] = v; const el = $('sumSheet').querySelector(`[data-k="${k}"]`); if(el) el.value = v; sumDerived(); }
+function setSumField(k, v){ if(!SUM) return; SUM.rec[k] = v; const el = $('sumSheet').querySelector(`[data-k="${k}"]`); if(el) el.value = ['duration_min','run_min','z1_min','z2_min','z3_min','z4plus_min'].includes(k) ? minToMmss(v) : v; sumDerived(); }
 function sumDerived(){
   const r = SUM.rec, c = SUM.cond;
   const dist = +r.distance_km || 0, dur = +r.duration_min || 0;
@@ -946,13 +959,18 @@ function saveSummary(){
   if(!String(r.workout).trim()) return showBanner('Give the session a name.');
   if(!r.date) return showBanner('Pick a date.');
   if(r.run_min !== '' && r.duration_min !== '' && +r.run_min > +r.duration_min) r.run_min = r.duration_min;
-  if(r.run_min === 0 || r.run_min === '') r.run_speed = r.run_min === 0 ? '' : r.run_speed;
+  const dist = +r.distance_km || 0, dur = +r.duration_min || 0, rm = r.run_min === '' ? null : +r.run_min;
+  if(rm === 0) r.run_speed = '';
+  else if(rm != null && dur && dist && (SUM.touched.has('run_min') || SUM.touched.has('distance_km') || SUM.touched.has('duration_min') || r.run_speed === '')){
+    if(rm >= dur - 0.05) r.run_speed = +(dist / (dur/60)).toFixed(1);                           // all running
+    else { const runKm = Math.max(0, dist - 4.0 * (dur - rm) / 60); r.run_speed = rm ? +(runKm / (rm/60)).toFixed(1) : ''; }   // walk parts assumed ~4 km/h
+  }
   r.notes = [condText(c), $('sumNotes').value.trim()].filter(Boolean).join(' ');
   if(!SUM.editing){ S.lastCond = {fuel: c.fuel, air: c.air}; save('pt_settings', S); }
   saveRecord(r);
   try{ localStorage.removeItem('pt_pending'); }catch(e){}
   const ed = SUM.editing; closeSummary();
-  showBanner(ed ? 'Session updated' : 'Session saved' + (Sync.configured() ? ' and syncing to your Sheet' : ''));
+  showBanner(ed === 'new' ? 'Session added' : ed ? 'Session updated' : 'Session saved' + (Sync.configured() ? ' and syncing to your Sheet' : ''));
 }
 function closeSummary(){ SUM = null; if(SUMT) clearInterval(SUMT); $('sumOverlay').style.display = 'none'; }
 function newId(p){ return p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -973,6 +991,7 @@ function normSession(r){
   o.run_km = o.walk_km = null;
   if(o.distance_km !== '' && o.run_min !== ''){
     if(o.run_min <= 0.5){ o.run_km = 0; o.walk_km = o.distance_km; }
+    else if(o.duration_min !== '' && o.run_min >= o.duration_min - 0.05){ o.run_km = o.distance_km; o.walk_km = 0; }
     else if(o.run_speed !== ''){ o.run_km = +Math.min(o.distance_km, o.run_speed * o.run_min / 60).toFixed(2); o.walk_km = +Math.max(0, o.distance_km - o.run_km).toFixed(2); }
   }
   return o;
@@ -1486,10 +1505,11 @@ function renderHome(){
 
   // Recent
   const rec = sortSessions(rows.slice()).slice(0, 4);
-  $('homeRecent').innerHTML = rec.length ? rec.map(r => `<div class="rec"><div><b>${esc(r.workout)}</b><div class="small">${parseD(r.date).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})}${r.time ? ' · ' + esc(r.time) : ''}</div></div>
+  $('homeRecent').innerHTML = rec.length ? rec.map(r => `<div class="rec" data-row="${esc(r.id)}" style="cursor:pointer"><div><b>${esc(r.workout)}</b><div class="small">${parseD(r.date).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})}${r.time ? ' · ' + esc(r.time) : ''}</div></div>
       <div style="text-align:right"><b>${r.distance_km !== '' ? r.distance_km.toFixed(2) + ' km' : ''}</b><div class="small">${r.duration_min !== '' ? Math.round(r.duration_min) + ' min' : ''}${r.avg_hr !== '' ? ' · ♥ ' + r.avg_hr : ''}</div></div></div>`).join('')
     : '<div class="small">No sessions yet.</div>';
   document.querySelectorAll('#tab-home [data-goto]').forEach(b => b.onclick = () => showTab(b.dataset.goto));
+  $('homeRecent').querySelectorAll('[data-row]').forEach(x => x.onclick = () => editSession(x.dataset.row));
   bindTips('#tab-home');
 }
 function showTab(name){
@@ -1502,21 +1522,32 @@ function showTab(name){
 function renderHistory(){
   const h = load('pt_history', []);
   if(!h.length){ $('histTable').innerHTML = '<div class="small">No sessions yet. Sessions longer than 1 minute are saved.</div>'; return; }
-  $('histTable').innerHTML = sessionTable(h.map(normSession), true);
-  $('histTable').querySelectorAll('[data-edits]').forEach(b => b.onclick = () => {
-    const rec = load('pt_history', []).find(r => r.id === b.dataset.edits); if(rec) openSummary(normSession(rec), true); });
-  $('histTable').querySelectorAll('[data-dels]').forEach(b => b.onclick = () => {
-    if(!confirm('Delete this session' + (Sync.configured() ? ' (also from the Google Sheet)' : '') + '?')) return;
-    save('pt_history', load('pt_history', []).filter(r => r.id !== b.dataset.dels));
-    Sync.enqueue({type:'deleteSession', id: b.dataset.dels}); renderHistory(); renderReports(); });
+  $('histTable').innerHTML = sessionTable(h.map(normSession));
+  bindSessionTable($('histTable'));
 }
 function mmTxt(m){ if(m === '' || m == null) return ''; const s = Math.round(m*60); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
-function sessionTable(rows, withDelete){
-  return `<table><tr><th>Date</th><th>Workout</th><th>Min</th><th>km</th><th>Avg/Max HR</th><th>Z4+</th>${withDelete ? '<th></th>' : ''}</tr>` +
-    rows.map(r => `<tr><td>${esc(r.date)}${r.time ? '<br><span class="small">' + esc(r.time) + '</span>' : ''}</td><td>${esc(r.workout)}${r.source === 'import' ? ' <span class="small">(imported)</span>' : ''}</td>
-      <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td><td>${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}${r.run_km != null ? `<br><span class="small">🏃${r.run_km.toFixed(1)} 🚶${r.walk_km.toFixed(1)}</span>` : ''}</td>
-      <td>${r.avg_hr !== '' ? r.avg_hr + ' / ' + r.max_hr : '–'}</td><td>${mmTxt(r.z4plus_min)}</td>
-      ${withDelete ? `<td style="white-space:nowrap"><button class="ghost" style="padding:4px 8px" data-edits="${esc(r.id)}">✎</button> <button class="ghost" style="padding:4px 8px" data-dels="${esc(r.id)}">✕</button></td>` : ''}</tr>`).join('') + '</table>';
+function sessionTable(rows){
+  const dfmt = d => d ? parseD(d).toLocaleDateString('en-IN', {day:'numeric', month:'short'}) : '';
+  return `<table class="stbl"><tr><th>Date</th><th>Workout</th><th>Min</th><th>km</th><th>HR</th><th></th></tr>` +
+    rows.map(r => `<tr data-row="${esc(r.id)}" style="cursor:pointer">
+      <td style="white-space:nowrap">${dfmt(r.date)}${r.time ? '<br><span class="small">' + esc(r.time) + '</span>' : ''}</td>
+      <td>${esc(r.workout)}${r.source === 'import' ? '<br><span class="small">imported</span>' : r.source === 'manual' ? '<br><span class="small">added</span>' : ''}</td>
+      <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td>
+      <td style="white-space:nowrap">${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}${r.run_km != null ? `<br><span class="small">🏃${r.run_km.toFixed(1)} 🚶${r.walk_km.toFixed(1)}</span>` : ''}</td>
+      <td style="white-space:nowrap">${r.avg_hr !== '' ? r.avg_hr + (r.max_hr !== '' ? '<span class="small">/' + r.max_hr + '</span>' : '') : '<span class="small">–</span>'}${r.z4plus_min !== '' && r.z4plus_min > 0 ? '<br><span class="small">Z4+ ' + mmTxt(r.z4plus_min) + '</span>' : ''}</td>
+      <td><button class="ghost" style="padding:6px 9px" data-edits="${esc(r.id)}" aria-label="Edit session">✎</button></td></tr>`).join('') + '</table>';
+}
+function editSession(id){ const rec = load('pt_history', []).find(r => r.id === id); if(rec) openSummary(normSession(rec), true); }
+function bindSessionTable(box){ box.querySelectorAll('[data-row]').forEach(tr => tr.onclick = () => editSession(tr.dataset.row)); }
+function deleteSession(id){
+  save('pt_history', load('pt_history', []).filter(r => r.id !== id));
+  Sync.enqueue({type:'deleteSession', id}); renderHistory(); renderReports(); renderHome();
+}
+function newManualSession(){
+  const now = new Date();
+  openSummary({id: newId('s'), date: localDate(now), time: now.toTimeString().slice(0,5), workout: '', source: 'manual',
+    duration_min: '', distance_km: '', avg_speed: '', run_speed: '', run_min: '', avg_hr: '', max_hr: '', end_hr: '', recovery_hr: '',
+    z1_min: '', z2_min: '', z3_min: '', z4plus_min: '', kcal: '', stepdowns: '', notes: ''}, 'new');
 }
 function exportCsv(){
   const h = load('pt_history', []); if(!h.length) return;
@@ -1634,7 +1665,8 @@ function renderReports(){
   const rc = cur.filter(r => r.recovery_hr !== '' && !/outdoor|5k/i.test(r.workout)).map(r => ({x: parseD(r.date).getTime(), y: r.recovery_hr, tip:`<b>${r.date}</b> · ${esc(r.workout)}<br>1-min recovery HR ${r.recovery_hr}`})).sort((p,q) => p.x - q.x);
   $('chRecovery').innerHTML = rc.length >= 2 ? lineChart([{name:'Recovery HR', color:'var(--s1)', pts:rc}], a.getTime(), b.getTime(), 'bpm') : '<div class="small" style="padding:16px 0">Not enough recovery readings in this period.</div>';
 
-  $('repTable').innerHTML = cur.length ? sessionTable(sortSessions(cur.slice()), false) : '<div class="small">No sessions in this period.</div>';
+  $('repTable').innerHTML = cur.length ? sessionTable(sortSessions(cur.slice())) : '<div class="small">No sessions in this period.</div>';
+  bindSessionTable($('repTable'));
   bindTips();
 }
 
@@ -1823,6 +1855,7 @@ function init(){
   $('btnPauseBelt').onclick = pauseBelt;
 
   initEditor();
+  $('btnAddSession').onclick = newManualSession;
   const syncMode = () => document.querySelectorAll('#manualMode button').forEach(x => x.classList.toggle('on', x.dataset.m === (S.manualMode || 'auto')));
   document.querySelectorAll('#manualMode button').forEach(b => b.onclick = () => { S.manualMode = b.dataset.m; save('pt_settings', S); syncMode(); });
   syncMode();
