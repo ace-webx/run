@@ -180,6 +180,7 @@
   <div class="hello"><div class="small" id="homeDate"></div><h2 id="homeHello">Summary</h2></div>
   <div class="card" id="todayCard"></div>
   <div class="card"><div class="h3">This week</div><div id="weekProg"></div></div>
+  <div class="card"><div class="h3">Kilometres</div><div id="homeKm"></div><div id="homeKmLegend" class="legend"></div><div id="homeKmChart"></div></div>
   <div class="card"><div class="row" style="justify-content:space-between;align-items:baseline"><div class="h3">Trends</div><span class="small">Last 4 weeks vs the 8 before</span></div><div class="trends" id="homeTrends"></div></div>
   <div class="card"><div class="h3">Heart rate at your run speed</div><div class="small">Lower = fitter. Continuous treadmill runs.</div><div id="trendLegendH" class="legend"></div><div id="homeTrendChart"></div></div>
   <div class="card"><div class="row" style="justify-content:space-between;align-items:baseline"><div class="h3">Recent sessions</div><button class="ghost" style="padding:6px 10px" data-goto="reports">See all</button></div><div id="homeRecent"></div></div>
@@ -260,6 +261,11 @@
       <button id="spDown">− 0.1</button><div class="val" id="spTarget">0.0</div><button id="spUp">+ 0.1</button>
     </div>
     <div class="speedbtns" id="speedPresets"></div>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px">
+      <span class="small">Count manual time as</span>
+      <div class="seg" id="manualMode"><button data-m="auto">Auto</button><button data-m="run">🏃 Run</button><button data-m="walk">🚶 Walk</button></div>
+    </div>
+    <div class="note">Auto = 5.0 km/h and faster counts as running. Workouts use each step's own Run/Walk setting.</div>
   </div>
   <div class="card">
     <h3 style="margin:0 0 10px">Incline</h3>
@@ -289,6 +295,7 @@
   </div>
   <div class="card"><div class="kpis" id="repKpis"></div><div class="note">Arrows compare with the previous period of the same length.</div></div>
   <div class="card"><div class="h3">Training volume</div><div class="small" id="volSub"></div><div id="chVolume"></div></div>
+  <div class="card"><div class="h3">Distance: run vs walk</div><div class="small" id="distSub"></div><div id="distLegend" class="legend"></div><div id="chDist"></div><div class="small" id="distNote"></div></div>
   <div class="card"><div class="h3">Time in heart-rate zones</div><div id="zoneLegend" class="legend"></div><div id="chZones"></div><div class="small" id="zoneShare"></div></div>
   <div class="card"><div class="h3">Fitness trend: average HR at the same speed</div>
     <div class="small">Lower heart rate at the same speed = fitter. Continuous treadmill bouts of 20+ min only (run/walk intervals, outdoor runs and 5K benchmarks left out).</div>
@@ -381,9 +388,9 @@ const ZONES = [
 function zoneOf(hr){ if(!hr) return -1; return ZONES.findIndex(z => hr <= z.max); }
 
 // ---------- Built-in workouts (from the running plan, Nov 2026) ----------
-const WU = (min=5, sp=4.0) => ({label:'Warm-up walk', kind:'time', value:min*60, speed:sp, incline:0});
-const CD = (min=5, sp=4.0) => ({label:'Cool-down walk', kind:'time', value:min*60, speed:sp, incline:0});
-const RUN = (min, sp, label='Run') => ({label, kind:'time', value:min*60, speed:sp, incline:0});
+const WU = (min=5, sp=4.0) => ({label:'Warm-up walk', kind:'time', value:min*60, speed:sp, incline:0, mode:'walk'});
+const CD = (min=5, sp=4.0) => ({label:'Cool-down walk', kind:'time', value:min*60, speed:sp, incline:0, mode:'walk'});
+const RUN = (min, sp, label='Run', mode='run') => ({label, kind:'time', value:min*60, speed:sp, incline:0, mode});
 const BUILTIN = [
   {id:'r58', name:'Run 5.8 × 25', desc:'Current standard session. WU 5 → run 25 @ 5.8 → CD 5', steps:[WU(), RUN(25,5.8), CD()]},
   {id:'r55', name:'Run 5.5 × 25', desc:'Re-entry / warm-evening option. WU 5 → run 25 @ 5.5 → CD 5', steps:[WU(), RUN(25,5.5), CD()]},
@@ -391,17 +398,17 @@ const BUILTIN = [
     steps:[WU(), RUN(20,5.8), RUN(5,6.0,'Run (finish)'), CD()]},
   {id:'r58x30', name:'Run 5.8 × 30', desc:'Duration lever instead of speed. WU 5 → 30 @ 5.8 → CD 5', steps:[WU(), RUN(30,5.8), CD()]},
   {id:'z2', name:'Zone 2 — 30 min', desc:'Thursday easy session. Aim for HR 133–145; adjust speed by hand if HR goes outside that range',
-    steps:[WU(), {label:'Zone 2 steady', kind:'time', value:30*60, speed:5.0, incline:0}, CD()]},
+    steps:[WU(), {label:'Zone 2 steady', kind:'time', value:30*60, speed:5.0, incline:0, mode:'run'}, CD()]},
   {id:'incl', name:'Incline walk', desc:'WU 5 flat → 25 @ 4.8, incline 8 → CD 5 flat. Target 120–135 bpm',
-    steps:[WU(5,4.5), {label:'Incline walk', kind:'time', value:25*60, speed:4.8, incline:8}, CD(5,4.5)]},
+    steps:[WU(5,4.5), {label:'Incline walk', kind:'time', value:25*60, speed:4.8, incline:8, mode:'walk'}, CD(5,4.5)]},
   {id:'5k', name:'5K benchmark @ 5.0', desc:'Steady 5.0 km/h until 5.00 km on the treadmill. Next one due mid-Dec/Jan',
-    steps:[{label:'5K steady', kind:'dist', value:5000, speed:5.0, incline:0}]},
+    steps:[{label:'5K steady', kind:'dist', value:5000, speed:5.0, incline:0, mode:'run'}]},
   {id:'int', name:'Intervals 3 × 3 min', desc:'Phase 3, not unlocked yet (earliest early Dec). WU 10 → 3 × (3 @ 6.5 / 3 @ 4.0) → CD 5', locked:true,
-    steps:[WU(10), RUN(3,6.5,'Hard 1'), RUN(3,4.0,'Recover walk'), RUN(3,6.5,'Hard 2'), RUN(3,4.0,'Recover walk'), RUN(3,6.5,'Hard 3'), CD()]},
+    steps:[WU(10), RUN(3,6.5,'Hard 1'), RUN(3,4.0,'Recover walk','walk'), RUN(3,6.5,'Hard 2'), RUN(3,4.0,'Recover walk','walk'), RUN(3,6.5,'Hard 3'), CD()]},
 ];
 
 // ---------- Settings ----------
-const DEFAULTS = {plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
+const DEFAULTS = {manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -704,6 +711,12 @@ function workoutTick(dt){
   const p = stepProgress(step);
   if(p.done >= p.total) advanceStep();
 }
+function isRunningNow(){
+  if(W.active && W.steps[W.idx]) return W.steps[W.idx].mode === 'run';
+  if(S.manualMode === 'run') return true;
+  if(S.manualMode === 'walk') return false;
+  return st.speed >= 5.0;
+}
 function currentStepSpeed(){ return W.override != null ? W.override : W.steps[W.idx].speed; }
 
 function advanceStep(){
@@ -754,7 +767,7 @@ function saveSession(name){
     distance_km: +sessionDistKm().toFixed(2),
     avg_speed: +(sessionDistKm() / (st.beltSec/3600) || 0).toFixed(2),
     run_speed: st.runSec > 30 ? +(st.runDist / st.runSec * 3.6).toFixed(1) : '',
-    run_min: st.runSec > 30 ? mins(st.runSec) : '',
+    run_min: mins(st.runSec),
     avg_hr: hasHr ? Math.round(st.hrSum/st.hrN) : '',
     max_hr: st.hrMax || '',
     end_hr: '', recovery_hr: '',
@@ -784,6 +797,12 @@ function normSession(r){
   for(const k of NUM_FIELDS){ const v = o[k]; o[k] = (v === '' || v == null || isNaN(+v)) ? '' : +v; }
   o.date = String(o.date || '').slice(0,10); o.time = String(o.time || '');
   o.workout = String(o.workout || ''); o.source = o.source || 'app'; o.notes = o.notes || '';
+  // run vs walk split (derived; not stored in the Sheet)
+  o.run_km = o.walk_km = null;
+  if(o.distance_km !== '' && o.run_min !== ''){
+    if(o.run_min <= 0.5){ o.run_km = 0; o.walk_km = o.distance_km; }
+    else if(o.run_speed !== ''){ o.run_km = +Math.min(o.distance_km, o.run_speed * o.run_min / 60).toFixed(2); o.walk_km = +Math.max(0, o.distance_km - o.run_km).toFixed(2); }
+  }
   return o;
 }
 function sortSessions(a){ return a.sort((x,y) => (y.date + y.time).localeCompare(x.date + x.time)); }
@@ -913,7 +932,7 @@ function tick(){
   if(st.speed > 0.3){
     st.beltSec += dt;
     st.ownDist += st.speed / 3.6 * dt;
-    if((W.active ? currentStepSpeed() : st.speed) >= 5.0){ st.runSec += dt; st.runDist += st.speed / 3.6 * dt; }
+    if(isRunningNow()){ st.runSec += dt; st.runDist += st.speed / 3.6 * dt; }
     if(st.hr){
       const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += dt;
       st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr);
@@ -968,6 +987,9 @@ function renderWorkout(){
 // ---------- Workouts: model helpers ----------
 // A workout's `steps` may contain plain steps {label, kind:'time'|'dist', value(sec|m), speed, incline}
 // and repeat blocks {type:'repeat', times, steps:[...]}. The engine runs the flattened list.
+const WALK_WORDS = /warm|cool|recover|walk|rest/i;
+function inferMode(label, speed){ return WALK_WORDS.test(label || '') ? 'walk' : (+speed < 4.5 ? 'walk' : 'run'); }
+function stepMode(x){ return x.mode === 'run' || x.mode === 'walk' ? x.mode : inferMode(x.label, x.speed); }
 function flattenSteps(steps){
   const out = [];
   for(const b of steps || []){
@@ -976,10 +998,10 @@ function flattenSteps(steps){
       for(let i = 1; i <= n; i++) for(const x of b.steps || []) out.push({...x, label: (x.label || 'Step') + (n > 1 ? ` ${i}/${n}` : '')});
     } else out.push({...b});
   }
-  return out.map(x => ({label: x.label || (x.speed < 5 ? 'Walk' : 'Run'), kind: x.kind || 'time', value: +x.value, speed: +x.speed, incline: +(x.incline || 0)}));
+  return out.map(x => ({label: x.label || (x.speed < 5 ? 'Walk' : 'Run'), kind: x.kind || 'time', value: +x.value, speed: +x.speed, incline: +(x.incline || 0), mode: stepMode(x)}));
 }
 function wkSeconds(steps){ return flattenSteps(steps).reduce((a,x) => a + (x.kind === 'dist' ? x.value / (x.speed/3.6) : x.value), 0); }
-function stepTxt(x){ return `${x.label ? x.label + ' ' : ''}${x.kind === 'dist' ? +(x.value/1000).toFixed(2) + ' km' : +(x.value/60).toFixed(1) + '′'} @ ${(+x.speed).toFixed(1)}${x.incline ? ' ↗' + x.incline : ''}`; }
+function stepTxt(x){ return `${stepMode(x) === 'walk' ? '🚶' : '🏃'}${x.label ? x.label + ' ' : ''}${x.kind === 'dist' ? +(x.value/1000).toFixed(2) + ' km' : +(x.value/60).toFixed(1) + '′'} @ ${(+x.speed).toFixed(1)}${x.incline ? ' ↗' + x.incline : ''}`; }
 function describeSteps(steps){
   return (steps || []).map(b => b.type === 'repeat' ? `${b.times}× (${(b.steps || []).map(stepTxt).join(', ')})` : stepTxt(b)).join(' → ');
 }
@@ -1009,11 +1031,11 @@ function renderWorkoutList(){
 // ---------- Workout editor ----------
 let ED = null;
 const LABELS = ['Warm-up','Run','Recover','Walk','Easy','Hard','Hill','Steady','Cool-down'];
-function edStep(label, amount, speed, incline = 0, unit = 'min'){ return {type:'step', label, amount, unit, speed, incline}; }
+function edStep(label, amount, speed, incline = 0, unit = 'min'){ return {type:'step', label, amount, unit, speed, incline, mode: inferMode(label, speed)}; }
 function toEd(x){
   if(x.type === 'repeat') return {type:'repeat', times: x.times || 2, steps: (x.steps || []).map(toEd)};
   return {type:'step', label: x.label || '', unit: x.kind === 'dist' ? 'km' : 'min',
-          amount: x.kind === 'dist' ? +(x.value/1000).toFixed(3) : +(x.value/60).toFixed(2), speed: +x.speed, incline: +(x.incline || 0)};
+          amount: x.kind === 'dist' ? +(x.value/1000).toFixed(3) : +(x.value/60).toFixed(2), speed: +x.speed, incline: +(x.incline || 0), mode: stepMode(x), modeTouched: !!x.mode};
 }
 function fromEd(b, where){
   if(b.type === 'repeat'){
@@ -1027,7 +1049,7 @@ function fromEd(b, where){
   if(!(sp >= 1 && sp <= 16)) throw new Error(`${where}${b.label ? ' (' + b.label + ')' : ''}: speed must be 1–16 km/h.`);
   if(!(inc >= 0 && inc <= 15)) throw new Error(`${where}: incline must be 0–15.`);
   return {label: (b.label || '').trim() || (sp < 5 ? 'Walk' : 'Run'), kind: b.unit === 'km' ? 'dist' : 'time',
-          value: b.unit === 'km' ? Math.round(amt * 1000) : Math.round(amt * 60), speed: sp, incline: inc};
+          value: b.unit === 'km' ? Math.round(amt * 1000) : Math.round(amt * 60), speed: sp, incline: inc, mode: b.mode === 'walk' ? 'walk' : 'run'};
 }
 function openEditor(w, asCopy){
   ED = w ? {id: asCopy ? null : w.id, name: asCopy ? w.name + ' (my version)' : w.name, desc: asCopy ? '' : (w.desc || ''), blocks: (w.steps || []).map(toEd)}
@@ -1044,7 +1066,8 @@ function edList(path){ const p = path.split('.').map(Number); return p.length ==
 function stepHtml(x, path, inRepeat){
   return `<div class="blk">
     <div class="row nowrap">
-      <input list="labelList" data-p="${path}" data-f="label" value="${esc(x.label)}" placeholder="Step name (e.g. Run)" style="flex:1;font-weight:700">
+      <input list="labelList" data-p="${path}" data-f="label" value="${esc(x.label)}" placeholder="Step name (e.g. Run)" style="flex:1;font-weight:700;min-width:0">
+      <select data-p="${path}" data-f="mode" style="width:auto;padding:10px 4px" aria-label="Run or walk"><option value="run"${x.mode !== 'walk' ? ' selected' : ''}>🏃 Run</option><option value="walk"${x.mode === 'walk' ? ' selected' : ''}>🚶 Walk</option></select>
       <button class="ghost ib" data-act="up" data-p="${path}" aria-label="Move up">↑</button>
       <button class="ghost ib" data-act="down" data-p="${path}" aria-label="Move down">↓</button>
       <button class="ghost ib" data-act="del" data-p="${path}" aria-label="Delete step">✕</button>
@@ -1074,8 +1097,9 @@ function edSummary(){
   try{ flat = flattenSteps(ED.blocks.map((b,i) => fromEd(b, 'Step ' + (i+1)))); }catch(e){ err = e.message; }
   if(err){ $('edSummary').innerHTML = `<span style="color:var(--warn)">⚠ ${esc(err)}</span>`; $('edViz').innerHTML = ''; return; }
   const secs = flat.reduce((a,x) => a + (x.kind === 'dist' ? x.value/(x.speed/3.6) : x.value), 0);
-  const km = flat.reduce((a,x) => a + (x.kind === 'dist' ? x.value/1000 : x.speed * x.value/3600), 0);
-  $('edSummary').innerHTML = `<b>~${Math.round(secs/60)} min · ~${km.toFixed(2)} km · ${flat.length} steps</b><br>` + flat.map(x => esc(stepTxt(x))).join(' → ');
+  const kmOf = x => x.kind === 'dist' ? x.value/1000 : x.speed * x.value/3600;
+  const km = flat.reduce((a,x) => a + kmOf(x), 0), rkm = flat.filter(x => x.mode === 'run').reduce((a,x) => a + kmOf(x), 0);
+  $('edSummary').innerHTML = `<b>~${Math.round(secs/60)} min · ~${km.toFixed(2)} km</b> (🏃 ${rkm.toFixed(2)} · 🚶 ${(km - rkm).toFixed(2)}) · ${flat.length} steps<br>` + flat.map(x => esc(stepTxt(x))).join(' → ');
   const maxSp = Math.max(...flat.map(x => x.speed), 1);
   $('edViz').innerHTML = flat.map(x => `<div class="cur" style="flex:${x.kind === 'dist' ? x.value/(x.speed/3.6) : x.value};height:${25 + 75*x.speed/maxSp}%;opacity:${0.45 + 0.55*x.speed/maxSp}"></div>`).join('');
 }
@@ -1094,9 +1118,12 @@ function edSaveWorkout(){
 function initEditor(){
   $('btnNewWk').onclick = () => openEditor(null);
   $('edCancel').onclick = () => { if(confirm('Discard changes?')) closeEditor(); };
+  $('edBlocks').addEventListener('change', e => { if(e.target.dataset.f === 'mode') e.target.dispatchEvent(new Event('input', {bubbles:true})); });
   $('edBlocks').addEventListener('input', e => {
     const el = e.target, path = el.dataset.p, f = el.dataset.f; if(!path || !f) return;
-    const x = edGet(path); x[f] = (f === 'label' || f === 'unit') ? el.value : el.value === '' ? '' : +el.value;
+    const x = edGet(path); x[f] = (f === 'label' || f === 'unit' || f === 'mode') ? el.value : el.value === '' ? '' : +el.value;
+    if(f === 'mode') x.modeTouched = true;
+    if(f === 'label' && !x.modeTouched){ x.mode = inferMode(x.label, x.speed); const sel = el.parentElement.querySelector('[data-f=mode]'); if(sel) sel.value = x.mode; }
     if(f === 'unit') renderEditor(); else edSummary();
   });
   $('edBlocks').addEventListener('click', e => {
@@ -1181,6 +1208,25 @@ function renderHome(){
     <div class="pbar"><div style="width:${Math.min(100, plannedMin ? mins/plannedMin*100 : 0)}%;background:var(--accent2)"></div></div>
     <div class="small">${km.toFixed(1)} km this week${streak ? ` · 🔥 ${streak}-week streak of 3+ sessions` : ''}</div>`;
 
+  // Kilometres: this week vs last week (+ same point last week), 8-week chart
+  const lws = new Date(ws.getTime() - 7*DAY), lwe = new Date(ws.getTime() - DAY);
+  const sameDay = new Date(lws.getTime() + ((dow + 6) % 7) * DAY);
+  const SW = stats(weekRows), SL = stats(inRange(rows, lws, lwe)), SP = stats(inRange(rows, lws, sameDay));
+  const split = x => `🏃 ${x.runKm.toFixed(1)} · 🚶 ${x.walkKm.toFixed(1)}` + (x.unsplitKm > 0.005 ? ` · ${x.unsplitKm.toFixed(1)} not split` : '');
+  const dkm = SW.km - SP.km;
+  $('homeKm').innerHTML = `<div class="kpis">
+      <div class="kpi"><div class="l">This week</div><div class="v">${SW.km.toFixed(1)} km</div><div class="d">${split(SW)}</div></div>
+      <div class="kpi"><div class="l">Last week</div><div class="v">${SL.km.toFixed(1)} km</div><div class="d">${split(SL)}</div></div>
+    </div>
+    <div class="small" style="margin:8px 0 2px">${Math.abs(dkm) < 0.05 ? 'Same as' : (dkm > 0 ? '▲ ' : '▼ ') + Math.abs(dkm).toFixed(1) + ' km vs'} last week at this point (${SP.km.toFixed(1)} km by ${DOW[dow].slice(0,3)}).</div>`;
+  const kmB = [];
+  for(let i = 7; i >= 0; i--){ const a = new Date(ws.getTime() - i*7*DAY), e = new Date(a.getTime() + 6*DAY); const sx = stats(inRange(rows, a, e));
+    kmB.push({label: a.toLocaleDateString('en-IN', {day:'numeric', month:'short'}), parts:[sx.runKm, sx.walkKm, sx.unsplitKm],
+      tip:`<b>Week of ${a.toLocaleDateString('en-IN', {day:'numeric', month:'short'})}</b><br>Total ${sx.km.toFixed(2)} km<br>🏃 Run ${sx.runKm.toFixed(2)} km<br>🚶 Walk ${sx.walkKm.toFixed(2)} km`}); }
+  const HK = ['var(--s1)', 'var(--s2)', 'var(--muted)'];
+  $('homeKmLegend').innerHTML = `<span><i style="background:${HK[0]}"></i>Run</span><span><i style="background:${HK[1]}"></i>Walk</span>` + (kmB.some(k => k.parts[2] > 0.005) ? `<span><i style="background:${HK[2]}"></i>Not split</span>` : '');
+  $('homeKmChart').innerHTML = stackChart(kmB, HK);
+
   // Trends: last 28 days vs the 56 days before (per-week averages / per-session averages)
   const A1 = localDate(new Date(today.getTime() - 27*DAY)), A0 = localDate(new Date(today.getTime() - 83*DAY)), B0 = localDate(new Date(today.getTime() - 28*DAY));
   const r1 = rows.filter(r => r.date >= A1 && r.date <= tStr), r0 = rows.filter(r => r.date >= A0 && r.date <= B0);
@@ -1191,6 +1237,7 @@ function renderHome(){
   const T = [
     {l:'Active min / week', c: sum(r1,'duration_min')/4, p: sum(r0,'duration_min')/8, f:v => Math.round(v), better:'up', min: r0.length},
     {l:'Distance / week', c: sum(r1,'distance_km')/4, p: sum(r0,'distance_km')/8, f:v => v.toFixed(1) + ' km', better:'up', min: r0.length},
+    {l:'🏃 Run km / week', c: r1.reduce((x,r) => x + (r.run_km || 0), 0)/4, p: r0.reduce((x,r) => x + (r.run_km || 0), 0)/8, f:v => v.toFixed(1) + ' km', better:'up', min: r0.filter(r => r.run_km != null).length},
     {l:'Sessions / week', c: r1.length/4, p: r0.length/8, f:v => v.toFixed(1), better:'up', min: r0.length},
     {l:'Avg HR at 5.8 km/h', c: avg(at58(r1),'avg_hr'), p: avg(at58(r0),'avg_hr'), f:v => Math.round(v) + ' bpm', better:'down'},
     {l:'Zone 4+ per run', c: avg(cont(r1),'z4plus_min'), p: avg(cont(r0),'z4plus_min'), f:v => v.toFixed(1) + ' min', better:'down'},
@@ -1240,7 +1287,7 @@ function mmTxt(m){ if(m === '' || m == null) return ''; const s = Math.round(m*6
 function sessionTable(rows, withDelete){
   return `<table><tr><th>Date</th><th>Workout</th><th>Min</th><th>km</th><th>Avg/Max HR</th><th>Z4+</th>${withDelete ? '<th></th>' : ''}</tr>` +
     rows.map(r => `<tr><td>${esc(r.date)}${r.time ? '<br><span class="small">' + esc(r.time) + '</span>' : ''}</td><td>${esc(r.workout)}${r.source === 'import' ? ' <span class="small">(imported)</span>' : ''}</td>
-      <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td><td>${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}</td>
+      <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td><td>${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}${r.run_km != null ? `<br><span class="small">🏃${r.run_km.toFixed(1)} 🚶${r.walk_km.toFixed(1)}</span>` : ''}</td>
       <td>${r.avg_hr !== '' ? r.avg_hr + ' / ' + r.max_hr : '–'}</td><td>${mmTxt(r.z4plus_min)}</td>
       ${withDelete ? `<td><button class="ghost" style="padding:4px 8px" data-dels="${esc(r.id)}">✕</button></td>` : ''}</tr>`).join('') + '</table>';
 }
@@ -1276,9 +1323,10 @@ function periodRange(p){
 }
 function inRange(rows, a, b){ const A = localDate(a), B = localDate(b); return rows.filter(r => r.date >= A && r.date <= B); }
 function stats(rows){
-  const o = {n: rows.length, min:0, km:0, days: new Set(rows.map(r => r.date)).size, hrW:0, hrMin:0, z:[0,0,0,0], zKnown:false, runMin:0, z34run:0};
+  const o = {runKm:0, walkKm:0, unsplitKm:0, n: rows.length, min:0, km:0, days: new Set(rows.map(r => r.date)).size, hrW:0, hrMin:0, z:[0,0,0,0], zKnown:false, runMin:0, z34run:0};
   for(const r of rows){
     o.min += +r.duration_min || 0; o.km += +r.distance_km || 0;
+    if(r.run_km != null){ o.runKm += r.run_km; o.walkKm += r.walk_km; } else o.unsplitKm += +r.distance_km || 0;
     if(r.avg_hr !== ''){ o.hrW += r.avg_hr * (r.duration_min || 1); o.hrMin += (r.duration_min || 1); }
     if(r.z1_min !== '' && r.z2_min !== ''){ o.zKnown = true; o.z[0] += r.z1_min || 0; o.z[1] += r.z2_min || 0; o.z[2] += r.z3_min || 0; o.z[3] += r.z4plus_min || 0;
       if(r.run_min !== '' && r.run_min > 0){ o.runMin += r.run_min; o.z34run += (r.z3_min || 0) + (r.z4plus_min || 0); } }
@@ -1310,6 +1358,8 @@ function renderReports(){
     kpi('Sessions', S1.n, cmp ? fmtDelta(S1.n, S0.n, '', false) : '') +
     kpi('Active minutes', Math.round(S1.min), cmp ? fmtDelta(S1.min, S0.min, ' min', false) : '') +
     kpi('Distance', S1.km.toFixed(1) + ' km', cmp ? fmtDelta(S1.km, S0.km, ' km', false, 1) : '') +
+    kpi('🏃 Run distance', S1.runKm.toFixed(1) + ' km', cmp ? fmtDelta(S1.runKm, S0.runKm, ' km', false, 1) : '') +
+    kpi('🚶 Walk distance', S1.walkKm.toFixed(1) + ' km', cmp ? fmtDelta(S1.walkKm, S0.walkKm, ' km', null, 1) : '') +
     kpi('Avg heart rate', S1.avgHr ? Math.round(S1.avgHr) + ' bpm' : '–', cmp ? fmtDelta(S1.avgHr, S0.avgHr, ' bpm', null) : '') +
     kpi('Zone 4+ time', S1.zKnown ? (S1.z[3] >= 10 ? Math.round(S1.z[3]) + ' min' : mmTxt(S1.z[3]) + ' min') : '–', cmp && S1.zKnown && S0.zKnown ? fmtDelta(S1.z[3], S0.z[3], ' min', true, 1) : '<div class="d">–</div>') +
     kpi('Zone 3+4 share of run time', S1.share != null ? Math.round(S1.share) + '%' : '–', cmp ? fmtDelta(S1.share, S0.share, ' pts', null) : '');
@@ -1328,6 +1378,13 @@ function renderReports(){
     d = next;
   }
   $('volSub').textContent = `Active minutes per ${unit}`;
+  const DCOL = ['var(--s1)', 'var(--s2)', 'var(--muted)'];
+  const hasUnsplit = buckets.some(k => k.st.unsplitKm > 0.005);
+  $('distSub').textContent = `Kilometres per ${unit}`;
+  $('distLegend').innerHTML = `<span><i style="background:${DCOL[0]}"></i>Run</span><span><i style="background:${DCOL[1]}"></i>Walk</span>` + (hasUnsplit ? `<span><i style="background:${DCOL[2]}"></i>Not split</span>` : '');
+  $('chDist').innerHTML = stackChart(buckets.map(k => ({label:k.label, parts:[k.st.runKm, k.st.walkKm, k.st.unsplitKm],
+    tip:`<b>${unit === 'week' ? 'Week of ' : ''}${k.label}</b><br>Total ${k.st.km.toFixed(2)} km<br>🏃 Run ${k.st.runKm.toFixed(2)} km<br>🚶 Walk ${k.st.walkKm.toFixed(2)} km` + (k.st.unsplitKm > 0.005 ? `<br>Not split ${k.st.unsplitKm.toFixed(2)} km` : '')})), DCOL);
+  $('distNote').textContent = hasUnsplit ? 'Not split = early run/walk sessions where run minutes weren\'t logged.' : '';
   $('chVolume').innerHTML = barChart(buckets.map(k => ({label:k.label, value:k.st.min,
     tip:`<b>${unit === 'week' ? 'Week of ' : ''}${k.label}</b><br>${Math.round(k.st.min)} min · ${k.st.n} session${k.st.n === 1 ? '' : 's'} · ${k.st.km.toFixed(1)} km`})), 'min');
 
@@ -1379,7 +1436,7 @@ function barChart(items){
   });
   return `<svg class="chart" viewBox="0 0 ${CW} ${CH}">${yGrid(max)}${bars}${xLabels(items.map(i => i.label), xs)}${hits}</svg>`;
 }
-function stackChart(items){
+function stackChart(items, colors = ZCOL){
   const max = niceMax(Math.max(1, ...items.map(i => i.parts.reduce((x,y) => x+y, 0))));
   const iw = (CW - PL - PR) / items.length, bw = Math.max(3, Math.min(28, iw - 2)), ph = CH - PT - PB;
   let bars = '', hits = '', xs = [];
@@ -1390,8 +1447,8 @@ function stackChart(items){
       const h = v / max * ph; if(h <= 0) return;
       const isTop = it.parts.slice(k+1).every(z => z <= 0);
       y -= h;
-      bars += isTop ? `<path d="${roundTop(x, y, bw, h, 4)}" style="fill:${ZCOL[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`
-                    : `<rect x="${x}" y="${y}" width="${bw}" height="${h}" style="fill:${ZCOL[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`;
+      bars += isTop ? `<path d="${roundTop(x, y, bw, h, 4)}" style="fill:${colors[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`
+                    : `<rect x="${x}" y="${y}" width="${bw}" height="${h}" style="fill:${colors[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`;
     });
     hits += `<rect class="hit" x="${PL + iw*i}" y="${PT}" width="${iw}" height="${ph}" data-tip="${esc(it.tip)}"/>`;
   });
@@ -1538,6 +1595,9 @@ function init(){
   $('btnPauseBelt').onclick = pauseBelt;
 
   initEditor();
+  const syncMode = () => document.querySelectorAll('#manualMode button').forEach(x => x.classList.toggle('on', x.dataset.m === (S.manualMode || 'auto')));
+  document.querySelectorAll('#manualMode button').forEach(b => b.onclick = () => { S.manualMode = b.dataset.m; save('pt_settings', S); syncMode(); });
+  syncMode();
 
   $('btnCsv').onclick = exportCsv;
   $('btnClearHist').onclick = () => { if(confirm('Clear the saved sessions on this device? (Sessions in your Google Sheet are not deleted, and come back on the next sync.)')){ save('pt_history', []); renderHistory(); renderReports(); } };
