@@ -122,6 +122,30 @@
   .h3{margin:0 0 4px;font-size:15px}
   .note{font-size:11px;color:var(--muted);margin-top:6px}
   .zchip{display:inline-block;padding:1px 6px;border-radius:6px;color:#fff;font-weight:700}
+  .hello{padding:6px 2px 0}.hello h2{margin:2px 0 4px;font-size:28px;letter-spacing:-.3px}
+  .today-name{font-size:22px;font-weight:800;margin:4px 0 2px}
+  .pbar{height:10px;background:var(--card2);border-radius:6px;overflow:hidden;margin:4px 0 10px}
+  .pbar>div{height:100%;background:var(--accent);border-radius:6px}
+  .days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:8px 0 12px}
+  .day{background:var(--card2);border-radius:10px;padding:6px 2px;text-align:center;font-size:11px;color:var(--muted)}
+  .day b{display:block;font-size:12px;color:var(--text)}
+  .day.done{background:var(--accent);color:var(--on-accent)}.day.done b{color:var(--on-accent)}
+  .day.today{outline:2px solid var(--accent2)}
+  .trends{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+  .trend{background:var(--card2);border-radius:12px;padding:10px;display:flex;gap:10px;align-items:center}
+  .trend .ar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;flex:none;background:var(--line);color:var(--muted)}
+  .trend .ar.good{background:var(--good);color:var(--card)}.trend .ar.bad{background:var(--bad);color:var(--card)}
+  .trend .tv{font-size:17px;font-weight:800}.trend .tl{font-size:11px;color:var(--muted)}
+  .rec{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .rec:last-child{border-bottom:0}.rec b{font-size:14px}
+  .blk{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin:8px 0}
+  .blk.rep{border:2px dashed var(--accent2);background:transparent}
+  .blk .blk{margin:8px 0 0}
+  .nowrap{flex-wrap:nowrap;align-items:center}
+  .sgrid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px;margin-top:6px}
+  .sgrid label{margin:2px 0}
+  .ib{padding:8px 10px;background:var(--card2)}
+  .wk .acts{display:flex;gap:6px;flex-wrap:nowrap}
   #log{font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)}
   .toggle{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
   .toggle input{width:auto;transform:scale(1.3)}
@@ -138,7 +162,7 @@
 
 <div id="unsupported" class="banner">
   This browser can't use Bluetooth. On iPhone, open this page in <b>Bluefy</b> (free on the App Store). On Mac, use <b>Chrome</b>.
-  You can still try <b>Demo mode</b> below.
+  You can still try <b>Demo</b> on the Run tab.
 </div>
 <div id="alertBanner" class="banner"></div>
 <div id="resumeCard" class="banner" style="background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok-text)">
@@ -149,14 +173,56 @@
   </div>
 </div>
 
-<div class="row">
-  <button id="btnConnect" class="primary grow">Connect treadmill</button>
-  <button id="btnHr" class="ghost">❤️ HR</button>
-  <button id="btnDemo" class="ghost">Demo</button>
+<div class="small" id="syncStatus" style="margin-top:2px"></div>
+
+<!-- HOME -->
+<div class="tab on" id="tab-home">
+  <div class="hello"><div class="small" id="homeDate"></div><h2 id="homeHello">Summary</h2></div>
+  <div class="card" id="todayCard"></div>
+  <div class="card"><div class="h3">This week</div><div id="weekProg"></div></div>
+  <div class="card"><div class="row" style="justify-content:space-between;align-items:baseline"><div class="h3">Trends</div><span class="small">Last 4 weeks vs the 8 before</span></div><div class="trends" id="homeTrends"></div></div>
+  <div class="card"><div class="h3">Heart rate at your run speed</div><div class="small">Lower = fitter. Continuous treadmill runs.</div><div id="trendLegendH" class="legend"></div><div id="homeTrendChart"></div></div>
+  <div class="card"><div class="row" style="justify-content:space-between;align-items:baseline"><div class="h3">Recent sessions</div><button class="ghost" style="padding:6px 10px" data-goto="reports">See all</button></div><div id="homeRecent"></div></div>
 </div>
 
-<div class="small" id="syncStatus" style="margin-top:6px"></div>
+<!-- WORKOUTS -->
+<div class="tab" id="tab-workouts">
+  <div id="wkListView">
+    <button class="primary" id="btnNewWk" style="width:100%;margin:10px 0">＋ New workout</button>
+    <div class="card"><div class="h3">My workouts</div><div id="wkCustomList"></div></div>
+    <div class="card"><div class="h3">From your running plan</div><div class="small">Built in. Tap Copy to make your own version.</div><div id="wkList"></div></div>
+  </div>
+  <div id="wkEditor" style="display:none">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center"><div class="h3" id="edTitle" style="margin:0">New workout</div><button class="ghost" id="edCancel" style="padding:6px 10px">Cancel</button></div>
+      <label>Workout name</label><input id="edName" placeholder="e.g. Run intervals">
+      <label>Description (optional)</label><input id="edDesc" placeholder="e.g. 3 × 5 min run with recovery walks">
+    </div>
+    <div id="edBlocks"></div>
+    <div class="row" style="margin:8px 0">
+      <button class="ghost grow" id="edAddStep">＋ Step</button>
+      <button class="ghost grow" id="edAddRepeat">＋ Repeat block</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <button class="ghost grow small" data-q="wu">＋ Warm-up 5 @ 4.0</button>
+      <button class="ghost grow small" data-q="cd">＋ Cool-down 5 @ 4.0</button>
+    </div>
+    <div class="card"><div class="small" id="edSummary"></div><div class="steps" id="edViz" style="height:34px"></div></div>
+    <div class="row" style="margin-bottom:16px">
+      <button class="blue grow" id="edSave">Save</button>
+      <button class="primary grow" id="edSaveStart">Save &amp; start</button>
+    </div>
+    <button class="ghost" id="edDelete" style="width:100%;color:var(--danger);display:none">Delete workout</button>
+  </div>
+</div>
 
+<!-- RUN (live) -->
+<div class="tab" id="tab-run">
+  <div class="row" style="margin-top:4px">
+    <button id="btnConnect" class="primary grow">Connect treadmill</button>
+    <button id="btnHr" class="ghost">❤️ HR</button>
+    <button id="btnDemo" class="ghost">Demo</button>
+  </div>
 <!-- LIVE METRICS -->
 <div class="card">
   <div class="metrics">
@@ -187,26 +253,7 @@
   </div>
 </div>
 
-<!-- TABS -->
-<div class="tab on" id="tab-workouts">
-  <div class="card">
-    <div class="small">Your sessions from the running plan. Speeds change on their own, with a 10-second spoken warning first.</div>
-    <div id="wkList"></div>
-  </div>
-  <div class="card">
-    <h3 style="margin:0 0 6px">Custom workout</h3>
-    <div class="small">One step per line: <code>minutes @ speed [incline]</code>, or <code>2.5km @ 5.0</code> for distance. Example: <code>5 @ 4.0</code></div>
-    <label>Name</label><input id="cName" placeholder="My workout">
-    <label>Steps</label>
-    <textarea id="cSteps" placeholder="5 @ 4.0&#10;25 @ 5.8&#10;5 @ 4.0"></textarea>
-    <div class="row" style="margin-top:8px">
-      <button class="blue grow" id="btnCustomSave">Save</button>
-      <button class="primary grow" id="btnCustomStart">Start now</button>
-    </div>
-  </div>
-</div>
 
-<div class="tab" id="tab-manual">
   <div class="card">
     <h3 style="margin:0 0 10px">Speed (km/h)</h3>
     <div class="ctl">
@@ -225,6 +272,7 @@
     <button class="primary grow" id="btnStartBelt">▶ Start belt</button>
     <button class="ghost grow" id="btnPauseBelt">⏸ Pause</button>
   </div>
+
 </div>
 
 <div class="tab" id="tab-reports">
@@ -248,17 +296,16 @@
     <div class="note">Average HR covers the whole session, including warm-up and cool-down, so only compare sessions with the same structure.</div></div>
   <div class="card"><div class="h3">Recovery: HR 1 minute after the workout</div><div class="small">Lower = faster recovery. 5K benchmarks left out (no cool-down, so not comparable).</div><div id="chRecovery"></div></div>
   <div class="card"><div class="h3">Sessions in this period</div><div id="repTable" style="overflow-x:auto"></div></div>
-</div>
-
-<div class="tab" id="tab-history">
   <div class="card">
     <div class="row" style="justify-content:space-between;align-items:center">
-      <h3 style="margin:0">History</h3>
-      <div class="row"><button class="ghost" id="btnCsv">Export CSV</button><button class="ghost" id="btnClearHist">Clear</button></div>
+      <div class="h3" style="margin:0">All sessions</div>
+      <div class="row"><button class="ghost" id="btnCsv">Export CSV</button><button class="ghost" id="btnClearHist">Clear device</button></div>
     </div>
+    <div class="small">✕ deletes a session everywhere (including the Google Sheet).</div>
     <div id="histTable" style="margin-top:10px;overflow-x:auto"></div>
   </div>
 </div>
+
 
 <div class="tab" id="tab-settings">
   <div class="card">
@@ -271,6 +318,11 @@
     <label>Step-down amount (km/h)</label><input id="sGuardDrop" type="number" step="0.1">
     <div class="toggle"><span>Stop belt when workout ends</span><input type="checkbox" id="sAutoStop"></div>
     <div class="toggle"><span>Voice announcements</span><input type="checkbox" id="sVoice"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0">Weekly plan</h3>
+    <div class="small">What Home suggests for each day. Change it when your plan changes.</div>
+    <div id="planEditor"></div>
   </div>
   <div class="card">
     <h3 style="margin:0">Appearance</h3>
@@ -297,14 +349,16 @@
   </div>
 </div>
 
+
 <div id="tip"></div>
 <div class="stopbar" style="display:none"><button class="danger" id="btnStop">STOP</button></div>
 
+
 <nav class="tabs">
-  <button data-tab="workouts" class="on">Workouts</button>
-  <button data-tab="manual">Manual</button>
+  <button data-tab="home" class="on">Home</button>
+  <button data-tab="workouts">Workouts</button>
+  <button data-tab="run">Run</button>
   <button data-tab="reports">Reports</button>
-  <button data-tab="history">History</button>
   <button data-tab="settings">Settings</button>
 </nav>
 
@@ -347,7 +401,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const DEFAULTS = {theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
+const DEFAULTS = {plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -581,11 +635,12 @@ function startWorkout(wk){
   if(wk.locked && !confirm('This one is Phase 3 and not unlocked in your plan yet (earliest early December). Start anyway?')) return;
   if(!st.connected && !st.demo){ showBanner('Connect the treadmill first (or tap Demo to try it out).'); return; }
   unlockAudio(); requestWakeLock();
-  Object.assign(W, {active:true, wk, steps:wk.steps.map(s => ({...s})), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
+  Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
   clearLive();
   resetSession();
   W.stepStartDist = curDist();
   document.getElementById('wkCard').style.display = 'block';
+  showTab('run');
   speak('Starting ' + wk.name + '. Belt starting.');
   (async () => {
     if(!hasControl) await requestControl();
@@ -709,7 +764,7 @@ function saveSession(name){
     stepdowns: W.stepdowns || 0, notes: '',
   };
   const hist = load('pt_history', []); hist.unshift(rec); save('pt_history', hist);
-  renderHistory(); renderReports();
+  renderHistory(); renderReports(); renderHome();
   log('Saved session', rec);
   Sync.enqueue({type:'session', data: rec});
   st.sessionStarted = false;
@@ -764,7 +819,7 @@ const Sync = {
       if(!d.ok){ setSync('Sync error: ' + d.error, true); if(verbose) showBanner('Sync error: ' + d.error); return; }
       save('pt_custom', (d.workouts || []).map(w => ({id:String(w.id), name:w.name, desc:w.desc || '', steps:w.steps})));
       save('pt_history', sortSessions((d.sessions || []).map(normSession)));
-      renderWorkoutList(); renderHistory(); renderReports();
+      renderWorkoutList(); renderHistory(); renderReports(); renderHome(); renderPlanEditor();
       setSync('Synced ' + new Date().toTimeString().slice(0,5) + ' · ' + (d.sessions || []).length + ' sessions');
       if(verbose) showBanner('Synced: ' + (d.workouts || []).length + ' custom workouts, ' + (d.sessions || []).length + ' sessions');
     }catch(e){ setSync('Offline: showing saved data', true); log('Sync pull failed', errText(e)); if(verbose) showBanner('Could not reach the Sheet: check the URL and that the script is deployed for "Anyone".'); }
@@ -830,6 +885,7 @@ function doResume(){
     $('wkCard').style.display = 'block';
     requestWakeLock();
     renderWorkout();
+    showTab('run');
     speak('Workout resumed');
   } else { speak('Session resumed'); }
   log('Resumed session; gap', Math.round(gap) + 's');
@@ -894,25 +950,268 @@ function renderWorkout(){
   const totDur = durs.reduce((a,b) => a+b, 0);
   $('stepsViz').innerHTML = W.steps.map((s,i) => `<div class="${i < W.idx ? 'done' : i === W.idx ? 'cur' : ''}" style="flex:${durs[i]/totDur};height:${30 + 70*s.speed/maxSp}%"></div>`).join('');
 }
-function renderWorkoutList(){
-  const custom = load('pt_custom', []);
-  const all = [...BUILTIN, ...custom.map(c => ({...c, custom:true}))];
-  $('wkList').innerHTML = all.map((w,i) => `
-    <div class="wk">
-      <div><h3>${esc(w.name)}${w.locked ? '<span class="tag">Phase 3, locked</span>' : ''}${w.custom ? '<span class="tag" style="color:var(--accent2);background:rgba(37,99,235,.1)">custom</span>' : ''}</h3>
-      <p>${esc(w.desc || describeSteps(w.steps))} · ~${Math.round(w.steps.reduce((a,s) => a + (s.kind==='dist' ? s.value/(s.speed/3.6) : s.value), 0)/60)} min</p></div>
-      <div class="row" style="flex-wrap:nowrap">
-        ${w.custom ? `<button class="ghost" data-del="${esc(w.id)}">✕</button>` : ''}
-        <button class="primary" data-start="${i}">Start</button>
-      </div>
-    </div>`).join('');
-  $('wkList').querySelectorAll('[data-start]').forEach(b => b.onclick = () => startWorkout(all[+b.dataset.start]));
-  $('wkList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
-    if(!confirm('Delete this custom workout?')) return;
-    save('pt_custom', load('pt_custom', []).filter(c => c.id !== b.dataset.del)); renderWorkoutList();
-    Sync.enqueue({type:'deleteWorkout', id: b.dataset.del}); });
+// ---------- Workouts: model helpers ----------
+// A workout's `steps` may contain plain steps {label, kind:'time'|'dist', value(sec|m), speed, incline}
+// and repeat blocks {type:'repeat', times, steps:[...]}. The engine runs the flattened list.
+function flattenSteps(steps){
+  const out = [];
+  for(const b of steps || []){
+    if(b.type === 'repeat'){
+      const n = Math.max(1, Math.round(+b.times || 1));
+      for(let i = 1; i <= n; i++) for(const x of b.steps || []) out.push({...x, label: (x.label || 'Step') + (n > 1 ? ` ${i}/${n}` : '')});
+    } else out.push({...b});
+  }
+  return out.map(x => ({label: x.label || (x.speed < 5 ? 'Walk' : 'Run'), kind: x.kind || 'time', value: +x.value, speed: +x.speed, incline: +(x.incline || 0)}));
 }
-function describeSteps(steps){ return steps.map(s => (s.kind === 'dist' ? (s.value/1000) + 'km' : (s.value/60) + 'min') + '@' + s.speed).join(' → '); }
+function wkSeconds(steps){ return flattenSteps(steps).reduce((a,x) => a + (x.kind === 'dist' ? x.value / (x.speed/3.6) : x.value), 0); }
+function stepTxt(x){ return `${x.label ? x.label + ' ' : ''}${x.kind === 'dist' ? +(x.value/1000).toFixed(2) + ' km' : +(x.value/60).toFixed(1) + '′'} @ ${(+x.speed).toFixed(1)}${x.incline ? ' ↗' + x.incline : ''}`; }
+function describeSteps(steps){
+  return (steps || []).map(b => b.type === 'repeat' ? `${b.times}× (${(b.steps || []).map(stepTxt).join(', ')})` : stepTxt(b)).join(' → ');
+}
+function allWorkouts(){ return [...BUILTIN, ...load('pt_custom', []).map(c => ({...c, custom:true}))]; }
+function findWorkout(id){ return allWorkouts().find(w => w.id === id); }
+
+function wkRow(w){
+  const mins = Math.round(wkSeconds(w.steps) / 60);
+  return `<div class="wk">
+    <div style="min-width:0"><h3>${esc(w.name)}${w.locked ? '<span class="tag">Phase 3, locked</span>' : ''}</h3>
+      <p>${esc(w.desc || describeSteps(w.steps))} · ~${mins} min</p></div>
+    <div class="acts">
+      ${w.custom ? `<button class="ghost ib" data-edit="${esc(w.id)}">Edit</button>` : `<button class="ghost ib" data-copy="${esc(w.id)}">Copy</button>`}
+      <button class="primary ib" data-start="${esc(w.id)}">Start</button>
+    </div></div>`;
+}
+function renderWorkoutList(){
+  const custom = load('pt_custom', []).map(c => ({...c, custom:true}));
+  $('wkCustomList').innerHTML = custom.length ? custom.map(wkRow).join('') :
+    '<div class="small" style="padding:8px 0">None yet. Tap <b>＋ New workout</b>, or <b>Copy</b> one of the plan workouts below.</div>';
+  $('wkList').innerHTML = BUILTIN.map(wkRow).join('');
+  document.querySelectorAll('#tab-workouts [data-start]').forEach(b => b.onclick = () => startWorkout(findWorkout(b.dataset.start)));
+  document.querySelectorAll('#tab-workouts [data-edit]').forEach(b => b.onclick = () => openEditor(findWorkout(b.dataset.edit), false));
+  document.querySelectorAll('#tab-workouts [data-copy]').forEach(b => b.onclick = () => openEditor(findWorkout(b.dataset.copy), true));
+}
+
+// ---------- Workout editor ----------
+let ED = null;
+const LABELS = ['Warm-up','Run','Recover','Walk','Easy','Hard','Hill','Steady','Cool-down'];
+function edStep(label, amount, speed, incline = 0, unit = 'min'){ return {type:'step', label, amount, unit, speed, incline}; }
+function toEd(x){
+  if(x.type === 'repeat') return {type:'repeat', times: x.times || 2, steps: (x.steps || []).map(toEd)};
+  return {type:'step', label: x.label || '', unit: x.kind === 'dist' ? 'km' : 'min',
+          amount: x.kind === 'dist' ? +(x.value/1000).toFixed(3) : +(x.value/60).toFixed(2), speed: +x.speed, incline: +(x.incline || 0)};
+}
+function fromEd(b, where){
+  if(b.type === 'repeat'){
+    const t = Math.round(+b.times);
+    if(!(t >= 1 && t <= 50)) throw new Error(`${where}: repeat count must be 1–50.`);
+    if(!b.steps.length) throw new Error(`${where}: the repeat block has no steps.`);
+    return {type:'repeat', times:t, steps: b.steps.map((x,j) => fromEd(x, `${where}, step ${j+1}`))};
+  }
+  const amt = +b.amount, sp = +b.speed, inc = +(b.incline || 0);
+  if(!(amt > 0)) throw new Error(`${where}${b.label ? ' (' + b.label + ')' : ''}: enter how many ${b.unit === 'km' ? 'km' : 'minutes'}.`);
+  if(!(sp >= 1 && sp <= 16)) throw new Error(`${where}${b.label ? ' (' + b.label + ')' : ''}: speed must be 1–16 km/h.`);
+  if(!(inc >= 0 && inc <= 15)) throw new Error(`${where}: incline must be 0–15.`);
+  return {label: (b.label || '').trim() || (sp < 5 ? 'Walk' : 'Run'), kind: b.unit === 'km' ? 'dist' : 'time',
+          value: b.unit === 'km' ? Math.round(amt * 1000) : Math.round(amt * 60), speed: sp, incline: inc};
+}
+function openEditor(w, asCopy){
+  ED = w ? {id: asCopy ? null : w.id, name: asCopy ? w.name + ' (my version)' : w.name, desc: asCopy ? '' : (w.desc || ''), blocks: (w.steps || []).map(toEd)}
+         : {id:null, name:'', desc:'', blocks:[edStep('Warm-up', 5, 4.0), edStep('Run', 20, 5.8), edStep('Cool-down', 5, 4.0)]};
+  $('edTitle').textContent = !w ? 'New workout' : asCopy ? 'Copy of ' + w.name : 'Edit workout';
+  $('edName').value = ED.name; $('edDesc').value = ED.desc;
+  $('edDelete').style.display = ED.id ? 'block' : 'none';
+  $('wkListView').style.display = 'none'; $('wkEditor').style.display = 'block';
+  showTab('workouts'); renderEditor();
+}
+function closeEditor(){ ED = null; $('wkEditor').style.display = 'none'; $('wkListView').style.display = 'block'; window.scrollTo({top:0}); }
+function edGet(path){ const [i,j] = path.split('.').map(Number); return j === undefined ? ED.blocks[i] : ED.blocks[i].steps[j]; }
+function edList(path){ const p = path.split('.').map(Number); return p.length === 1 ? ED.blocks : ED.blocks[p[0]].steps; }
+function stepHtml(x, path, inRepeat){
+  return `<div class="blk">
+    <div class="row nowrap">
+      <input list="labelList" data-p="${path}" data-f="label" value="${esc(x.label)}" placeholder="Step name (e.g. Run)" style="flex:1;font-weight:700">
+      <button class="ghost ib" data-act="up" data-p="${path}" aria-label="Move up">↑</button>
+      <button class="ghost ib" data-act="down" data-p="${path}" aria-label="Move down">↓</button>
+      <button class="ghost ib" data-act="del" data-p="${path}" aria-label="Delete step">✕</button>
+    </div>
+    <div class="sgrid">
+      <div><label>${x.unit === 'km' ? 'Distance' : 'Duration'}</label><div class="row nowrap" style="gap:4px">
+        <input type="number" inputmode="decimal" step="0.5" min="0" data-p="${path}" data-f="amount" value="${x.amount}" style="min-width:0">
+        <select data-p="${path}" data-f="unit" style="width:auto;padding:10px 4px"><option value="min"${x.unit === 'min' ? ' selected' : ''}>min</option><option value="km"${x.unit === 'km' ? ' selected' : ''}>km</option></select></div></div>
+      <div><label>Speed km/h</label><input type="number" inputmode="decimal" step="0.1" min="1" max="16" data-p="${path}" data-f="speed" value="${x.speed}"></div>
+      <div><label>Incline</label><input type="number" inputmode="numeric" step="1" min="0" max="15" data-p="${path}" data-f="incline" value="${x.incline}"></div>
+    </div></div>`;
+}
+function renderEditor(){
+  $('edBlocks').innerHTML = `<datalist id="labelList">${LABELS.map(l => `<option value="${l}">`).join('')}</datalist>` +
+    ED.blocks.map((b, i) => b.type === 'repeat' ? `<div class="blk rep">
+      <div class="row nowrap"><b>🔁 Repeat</b>
+        <input type="number" inputmode="numeric" min="1" max="50" data-p="${i}" data-f="times" value="${b.times}" style="width:70px">
+        <span class="small" style="flex:1">times</span>
+        <button class="ghost ib" data-act="up" data-p="${i}">↑</button><button class="ghost ib" data-act="down" data-p="${i}">↓</button><button class="ghost ib" data-act="del" data-p="${i}">✕</button></div>
+      ${b.steps.map((x, j) => stepHtml(x, i + '.' + j, true)).join('')}
+      <button class="ghost" data-act="addin" data-p="${i}" style="width:100%;margin-top:8px">＋ Step in this block</button>
+    </div>` : stepHtml(b, String(i), false)).join('');
+  edSummary();
+}
+function edSummary(){
+  let flat = [], err = '';
+  try{ flat = flattenSteps(ED.blocks.map((b,i) => fromEd(b, 'Step ' + (i+1)))); }catch(e){ err = e.message; }
+  if(err){ $('edSummary').innerHTML = `<span style="color:var(--warn)">⚠ ${esc(err)}</span>`; $('edViz').innerHTML = ''; return; }
+  const secs = flat.reduce((a,x) => a + (x.kind === 'dist' ? x.value/(x.speed/3.6) : x.value), 0);
+  const km = flat.reduce((a,x) => a + (x.kind === 'dist' ? x.value/1000 : x.speed * x.value/3600), 0);
+  $('edSummary').innerHTML = `<b>~${Math.round(secs/60)} min · ~${km.toFixed(2)} km · ${flat.length} steps</b><br>` + flat.map(x => esc(stepTxt(x))).join(' → ');
+  const maxSp = Math.max(...flat.map(x => x.speed), 1);
+  $('edViz').innerHTML = flat.map(x => `<div class="cur" style="flex:${x.kind === 'dist' ? x.value/(x.speed/3.6) : x.value};height:${25 + 75*x.speed/maxSp}%;opacity:${0.45 + 0.55*x.speed/maxSp}"></div>`).join('');
+}
+function edSaveWorkout(){
+  ED.name = $('edName').value.trim(); ED.desc = $('edDesc').value.trim();
+  if(!ED.name) throw new Error('Give the workout a name.');
+  if(!ED.blocks.length) throw new Error('Add at least one step.');
+  const w = {id: ED.id || newId('w'), name: ED.name, desc: ED.desc, steps: ED.blocks.map((b,i) => fromEd(b, 'Step ' + (i+1)))};
+  const list = load('pt_custom', []); const k = list.findIndex(c => c.id === w.id);
+  if(k >= 0) list[k] = w; else list.push(w);
+  save('pt_custom', list);
+  Sync.enqueue({type:'workout', data:w});
+  renderWorkoutList(); renderPlanEditor(); renderHome();
+  return w;
+}
+function initEditor(){
+  $('btnNewWk').onclick = () => openEditor(null);
+  $('edCancel').onclick = () => { if(confirm('Discard changes?')) closeEditor(); };
+  $('edBlocks').addEventListener('input', e => {
+    const el = e.target, path = el.dataset.p, f = el.dataset.f; if(!path || !f) return;
+    const x = edGet(path); x[f] = (f === 'label' || f === 'unit') ? el.value : el.value === '' ? '' : +el.value;
+    if(f === 'unit') renderEditor(); else edSummary();
+  });
+  $('edBlocks').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if(!b) return;
+    const path = b.dataset.p, act = b.dataset.act;
+    if(act === 'addin'){ const r = ED.blocks[+path]; const last = r.steps[r.steps.length - 1]; r.steps.push(edStep(last ? last.label : 'Run', last ? last.amount : 3, last ? last.speed : 5.0)); renderEditor(); return; }
+    const list = edList(path), i = +path.split('.').pop();
+    if(act === 'del'){ list.splice(i, 1); }
+    if(act === 'up' && i > 0){ [list[i-1], list[i]] = [list[i], list[i-1]]; }
+    if(act === 'down' && i < list.length - 1){ [list[i+1], list[i]] = [list[i], list[i+1]]; }
+    renderEditor();
+  });
+  $('edAddStep').onclick = () => { ED.blocks.push(edStep('Run', 5, 5.5)); renderEditor(); };
+  $('edAddRepeat').onclick = () => { ED.blocks.push({type:'repeat', times:3, steps:[edStep('Run', 3, 6.0), edStep('Recover', 3, 4.0)]}); renderEditor(); };
+  document.querySelectorAll('#wkEditor [data-q]').forEach(b => b.onclick = () => {
+    if(b.dataset.q === 'wu') ED.blocks.unshift(edStep('Warm-up', 5, 4.0)); else ED.blocks.push(edStep('Cool-down', 5, 4.0));
+    renderEditor(); });
+  $('edSave').onclick = () => { try{ const w = edSaveWorkout(); closeEditor(); showBanner('Saved: ' + w.name + (Sync.configured() ? ' (syncing)' : '')); }catch(e){ showBanner(e.message); } };
+  $('edSaveStart').onclick = () => { try{ const w = edSaveWorkout(); closeEditor(); startWorkout(findWorkout(w.id)); }catch(e){ showBanner(e.message); } };
+  $('edDelete').onclick = () => {
+    if(!ED.id || !confirm('Delete "' + ED.name + '"?')) return;
+    save('pt_custom', load('pt_custom', []).filter(c => c.id !== ED.id));
+    Sync.enqueue({type:'deleteWorkout', id: ED.id});
+    closeEditor(); renderWorkoutList(); renderPlanEditor(); renderHome();
+  };
+}
+
+// ---------- Weekly plan & Home ----------
+const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DEFAULT_PLAN = ['r58l6','rest','z2','r58l6','z2','r58l6','rest'];   // Sun..Sat (current plan: Tue/Thu Zone 2, Wed/Fri/Sun run)
+function plan(){ const p = S.plan; return Array.isArray(p) && p.length === 7 ? p : DEFAULT_PLAN.slice(); }
+function renderPlanEditor(){
+  const el = $('planEditor'); if(!el) return;
+  const opts = [{id:'rest', name:'Rest day'}, ...allWorkouts()];
+  const order = [1,2,3,4,5,6,0];
+  el.innerHTML = order.map(d => `<label>${DOW[d]}</label><select data-day="${d}">${opts.map(o => `<option value="${esc(o.id)}"${plan()[d] === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select>`).join('');
+  el.querySelectorAll('select').forEach(sel => sel.onchange = () => { const p = plan(); p[+sel.dataset.day] = sel.value; S.plan = p; save('pt_settings', S); renderHome(); });
+}
+function weekStart(d){ const x = dOnly(d); return new Date(x.getTime() - ((x.getDay() + 6) % 7) * DAY); }
+function renderHome(){
+  if(!$('todayCard')) return;
+  const rows = load('pt_history', []).map(normSession);
+  const now = new Date(), today = dOnly(now), tStr = localDate(today), dow = today.getDay();
+  const h = now.getHours();
+  $('homeHello').textContent = (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', Pawan';
+  $('homeDate').textContent = today.toLocaleDateString('en-IN', {weekday:'long', day:'numeric', month:'long'}).toUpperCase();
+
+  // Today
+  const pid = plan()[dow], w = pid === 'rest' ? null : findWorkout(pid);
+  const doneToday = rows.filter(r => r.date === tStr);
+  const doneTxt = doneToday.length ? `<div class="small" style="margin-top:6px;color:var(--good)">✓ Done today: ${doneToday.map(r => esc(r.workout) + ' · ' + Math.round(r.duration_min) + ' min').join(', ')}</div>` : '';
+  $('todayCard').innerHTML = w ? `<div class="small">TODAY'S PLAN · ${DOW[dow].toUpperCase()}</div>
+      <div class="today-name">${esc(w.name)}</div>
+      <div class="small">${esc(w.desc || describeSteps(w.steps))} · ~${Math.round(wkSeconds(w.steps)/60)} min</div>${doneTxt}
+      <div class="row" style="margin-top:10px"><button class="primary grow" id="homeStart">▶ Start ${esc(w.name)}</button><button class="ghost" data-goto="workouts">Other</button></div>`
+    : `<div class="small">TODAY · ${DOW[dow].toUpperCase()}</div><div class="today-name">Rest day 😴</div>
+      <div class="small">Recovery is part of training: muscles and tendons adapt on rest days. An easy walk is fine.</div>${doneTxt}
+      <div class="row" style="margin-top:10px"><button class="ghost grow" data-goto="workouts">Start something anyway</button></div>`;
+  if(w) $('homeStart').onclick = () => startWorkout(w);
+
+  // This week
+  const ws = weekStart(today), wsStr = localDate(ws);
+  const weekRows = rows.filter(r => r.date >= wsStr && r.date <= tStr);
+  let planned = 0, plannedMin = 0, chips = '';
+  for(let i = 0; i < 7; i++){
+    const d = new Date(ws.getTime() + i*DAY), dd = d.getDay(), id = plan()[dd], pw = id === 'rest' ? null : findWorkout(id);
+    if(pw){ planned++; plannedMin += wkSeconds(pw.steps)/60; }
+    const done = rows.some(r => r.date === localDate(d));
+    const short = !pw ? 'Rest' : /zone 2/i.test(pw.name) ? 'Z2' : /incline/i.test(pw.name) ? 'Walk' : /5k/i.test(pw.name) ? '5K' : 'Run';
+    chips += `<div class="day${done ? ' done' : ''}${localDate(d) === tStr ? ' today' : ''}"><b>${DOW[dd].slice(0,1)}</b>${done ? '✓' : short}</div>`;
+  }
+  const mins = weekRows.reduce((a,r) => a + (+r.duration_min || 0), 0), km = weekRows.reduce((a,r) => a + (+r.distance_km || 0), 0);
+  // streak: consecutive weeks with ≥3 sessions (this week counts once it reaches 3)
+  let streak = 0, wk = new Date(ws);
+  const countIn = (a) => { const A = localDate(a), B = localDate(new Date(a.getTime() + 6*DAY)); return rows.filter(r => r.date >= A && r.date <= B).length; };
+  if(countIn(wk) < 3) wk = new Date(wk.getTime() - 7*DAY);
+  while(countIn(wk) >= 3 && streak < 104){ streak++; wk = new Date(wk.getTime() - 7*DAY); }
+  $('weekProg').innerHTML = `<div class="days">${chips}</div>
+    <div class="row" style="justify-content:space-between"><span class="small">Sessions</span><span class="small"><b>${weekRows.length}</b> of ${planned} planned</span></div>
+    <div class="pbar"><div style="width:${Math.min(100, planned ? weekRows.length/planned*100 : 0)}%"></div></div>
+    <div class="row" style="justify-content:space-between"><span class="small">Active minutes</span><span class="small"><b>${Math.round(mins)}</b> of ~${Math.round(plannedMin)}</span></div>
+    <div class="pbar"><div style="width:${Math.min(100, plannedMin ? mins/plannedMin*100 : 0)}%;background:var(--accent2)"></div></div>
+    <div class="small">${km.toFixed(1)} km this week${streak ? ` · 🔥 ${streak}-week streak of 3+ sessions` : ''}</div>`;
+
+  // Trends: last 28 days vs the 56 days before (per-week averages / per-session averages)
+  const A1 = localDate(new Date(today.getTime() - 27*DAY)), A0 = localDate(new Date(today.getTime() - 83*DAY)), B0 = localDate(new Date(today.getTime() - 28*DAY));
+  const r1 = rows.filter(r => r.date >= A1 && r.date <= tStr), r0 = rows.filter(r => r.date >= A0 && r.date <= B0);
+  const sum = (a,f) => a.reduce((x,r) => x + (+r[f] || 0), 0);
+  const avg = (a,f) => { const v = a.filter(r => r[f] !== ''); return v.length ? sum(v,f)/v.length : null; };
+  const cont = a => a.filter(r => r.run_min !== '' && r.run_min >= 20 && !/outdoor|5k/i.test(r.workout + ' ' + r.notes));
+  const at58 = a => cont(a).filter(r => r.run_speed !== '' && r.run_speed >= 5.65 && r.run_speed < 5.95);
+  const T = [
+    {l:'Active min / week', c: sum(r1,'duration_min')/4, p: sum(r0,'duration_min')/8, f:v => Math.round(v), better:'up', min: r0.length},
+    {l:'Distance / week', c: sum(r1,'distance_km')/4, p: sum(r0,'distance_km')/8, f:v => v.toFixed(1) + ' km', better:'up', min: r0.length},
+    {l:'Sessions / week', c: r1.length/4, p: r0.length/8, f:v => v.toFixed(1), better:'up', min: r0.length},
+    {l:'Avg HR at 5.8 km/h', c: avg(at58(r1),'avg_hr'), p: avg(at58(r0),'avg_hr'), f:v => Math.round(v) + ' bpm', better:'down'},
+    {l:'Zone 4+ per run', c: avg(cont(r1),'z4plus_min'), p: avg(cont(r0),'z4plus_min'), f:v => v.toFixed(1) + ' min', better:'down'},
+    {l:'Recovery HR (1 min)', c: avg(r1,'recovery_hr'), p: avg(r0,'recovery_hr'), f:v => Math.round(v) + ' bpm', better:'down'},
+  ];
+  $('homeTrends').innerHTML = T.map(t => {
+    if(t.c == null || t.p == null || t.min === 0) return `<div class="trend"><div class="ar">·</div><div><div class="tv">${t.c != null ? t.f(t.c) : '–'}</div><div class="tl">${t.l} · not enough history</div></div></div>`;
+    const d = t.c - t.p, flat = Math.abs(d) < Math.max(0.5, Math.abs(t.p) * 0.02);
+    const good = flat ? null : (t.better === 'up' ? d > 0 : d < 0);
+    return `<div class="trend" title="Previous: ${t.f(t.p)}"><div class="ar ${good == null ? '' : good ? 'good' : 'bad'}">${flat ? '=' : d > 0 ? '▲' : '▼'}</div>
+      <div><div class="tv">${t.f(t.c)}</div><div class="tl">${t.l} · was ${t.f(t.p)}</div></div></div>`;
+  }).join('');
+
+  // HR-at-speed chart, last 90 days
+  const a90 = new Date(today.getTime() - 89*DAY);
+  const tr = cont(inRange(rows, a90, today)).filter(r => r.avg_hr !== '' && r.run_speed !== '');
+  const series = SPEED_SERIES.map(sv => ({name:sv.name, color:sv.color, pts: tr.filter(r => sv.test(r.run_speed)).map(r => ({x: parseD(r.date).getTime(), y: r.avg_hr,
+    tip:`<b>${r.date}</b> · ${esc(r.workout)}<br>Avg HR ${r.avg_hr} at ${r.run_speed} km/h`})).sort((p,q) => p.x - q.x)})).filter(x => x.pts.length);
+  $('trendLegendH').innerHTML = series.map(x => `<span><i style="background:${x.color}"></i>${x.name}</span>`).join('');
+  $('homeTrendChart').innerHTML = tr.length >= 2 ? lineChart(series, a90.getTime(), today.getTime(), 'bpm') : '<div class="small" style="padding:12px 0">Appears after 2+ continuous runs with heart rate.</div>';
+
+  // Recent
+  const rec = sortSessions(rows.slice()).slice(0, 4);
+  $('homeRecent').innerHTML = rec.length ? rec.map(r => `<div class="rec"><div><b>${esc(r.workout)}</b><div class="small">${parseD(r.date).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})}${r.time ? ' · ' + esc(r.time) : ''}</div></div>
+      <div style="text-align:right"><b>${r.distance_km !== '' ? r.distance_km.toFixed(2) + ' km' : ''}</b><div class="small">${r.duration_min !== '' ? Math.round(r.duration_min) + ' min' : ''}${r.avg_hr !== '' ? ' · ♥ ' + r.avg_hr : ''}</div></div></div>`).join('')
+    : '<div class="small">No sessions yet.</div>';
+  document.querySelectorAll('#tab-home [data-goto]').forEach(b => b.onclick = () => showTab(b.dataset.goto));
+  bindTips('#tab-home');
+}
+function showTab(name){
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.tab === name));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + name));
+  if(name === 'reports') renderReports();
+  if(name === 'home') renderHome();
+  window.scrollTo({top:0});
+}
 function renderHistory(){
   const h = load('pt_history', []);
   if(!h.length){ $('histTable').innerHTML = '<div class="small">No sessions yet. Sessions longer than 1 minute are saved.</div>'; return; }
@@ -1099,12 +1398,12 @@ function lineChart(series, x0, x1, unit){
   for(let i = 0; i <= ticks; i++){ const t = x0 + (x1 - x0) * i / ticks; xl += `<text x="${X(t)}" y="${CH - 6}" text-anchor="${i === 0 ? 'start' : i === ticks ? 'end' : 'middle'}">${new Date(t).toLocaleDateString('en-IN', {day:'numeric', month:'short'})}</text>`; }
   return `<svg class="chart" viewBox="0 0 ${CW} ${CH}">${yGrid(hi, lo)}${marks}${xl}</svg>`;
 }
-function bindTips(){
+function bindTips(scope = '#tab-reports'){
   const tip = $('tip');
   const show = (e, el) => { const t = el.getAttribute('data-tip'); if(!t) return; tip.innerHTML = t; tip.style.display = 'block';
     const r = el.getBoundingClientRect(); const x = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, r.left + r.width/2 - tip.offsetWidth/2));
     tip.style.left = x + 'px'; tip.style.top = Math.max(8, r.top - tip.offsetHeight - 8) + 'px'; };
-  document.querySelectorAll('#tab-reports [data-tip]').forEach(el => {
+  document.querySelectorAll(scope + ' [data-tip]').forEach(el => {
     el.onmouseenter = e => show(e, el); el.onmouseleave = () => tip.style.display = 'none';
     el.onclick = e => { e.stopPropagation(); show(e, el); };
   });
@@ -1223,9 +1522,7 @@ function init(){
   $('btnStartBelt').onclick = async () => { if(!hasControl) await requestControl(); await startBelt(); };
   $('btnPauseBelt').onclick = pauseBelt;
 
-  $('btnCustomSave').onclick = () => { try{ const c = customFromForm(); const l = load('pt_custom', []); l.push(c); save('pt_custom', l); renderWorkoutList();
-    Sync.enqueue({type:'workout', data:c}); showBanner('Saved: ' + c.name + (Sync.configured() ? ' (syncing)' : '')); }catch(e){ showBanner(e.message); } };
-  $('btnCustomStart').onclick = () => { try{ startWorkout(customFromForm()); }catch(e){ showBanner(e.message); } };
+  initEditor();
 
   $('btnCsv').onclick = exportCsv;
   $('btnClearHist').onclick = () => { if(confirm('Clear the saved sessions on this device? (Sessions in your Google Sheet are not deleted, and come back on the next sync.)')){ save('pt_history', []); renderHistory(); renderReports(); } };
@@ -1247,12 +1544,7 @@ function init(){
     Sync.migrateLocal(); await Sync.pull(true); };
   $('btnCopyLog').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(logLines.join('\n')).then(() => showBanner('Log copied')); };
 
-  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
-    if(b.dataset.tab === 'reports') renderReports();
-    window.scrollTo({top:0});
-  });
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
   $('btnResume').onclick = () => { if(st.connected){ resumeArmed = true; } else connectTreadmill(); };
   $('btnDiscard').onclick = () => { if(confirm('Discard the unfinished session?')) clearLive(); };
@@ -1264,7 +1556,7 @@ function init(){
     renderReports(); });
   $('repFrom').onchange = $('repTo').onchange = renderReports;
   save('pt_history', sortSessions(load('pt_history', []).map(normSession)));
-  renderWorkoutList(); renderHistory(); renderTargets(); renderReports();
+  renderWorkoutList(); renderHistory(); renderTargets(); renderReports(); renderPlanEditor(); renderHome();
   checkLive();
   if(Sync.configured()){ Sync.migrateLocal(); Sync.pull(); }
   document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && !W.active) Sync.pull(); });
@@ -1277,7 +1569,7 @@ window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault();
 init();
 
 // Expose for testing
-window.__pt = {Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
+window.__pt = {flattenSteps, openEditor, renderHome, Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
 </script>
 </body>
 </html>
