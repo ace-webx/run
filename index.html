@@ -146,6 +146,17 @@
   .sgrid label{margin:2px 0}
   .ib{padding:8px 10px;background:var(--card2)}
   .wk .acts{display:flex;gap:6px;flex-wrap:nowrap}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{background:var(--bg);width:100%;max-width:720px;max-height:94vh;overflow:auto;border-radius:22px 22px 0 0;padding:16px 12px calc(env(safe-area-inset-bottom) + 18px);-webkit-overflow-scrolling:touch}
+  .sheet h2{margin:2px 0 2px;font-size:24px}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fgrid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .fgrid label,.fgrid4 label{margin:4px 0 2px;font-size:12px}
+  .chk{display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13px}
+  .chk .ic{flex:none;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#fff}
+  .ic.ok{background:var(--good)}.ic.warn{background:#d97706}.ic.bad{background:var(--bad)}
+  .verdict{padding:10px 12px;border-radius:12px;font-weight:700;margin-bottom:6px}
+  .verdict.ok{background:var(--ok-bg);color:var(--ok-text)}.verdict.warn{background:var(--banner-bg);color:var(--warn)}.verdict.bad{background:rgba(220,38,38,.12);color:var(--bad)}
   #log{font-family:ui-monospace,Menlo,monospace;font-size:11px;white-space:pre-wrap;max-height:220px;overflow:auto;color:var(--muted)}
   .toggle{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
   .toggle input{width:auto;transform:scale(1.3)}
@@ -157,7 +168,7 @@
 
 <header>
   <h1>🏃 Pawan Treadmill</h1>
-  <span id="connPill" class="pill">Not connected</span>
+  <button id="connPill" class="pill" style="border:0;cursor:pointer">🔗 Connect</button>
 </header>
 
 <div id="unsupported" class="banner">
@@ -252,6 +263,7 @@
     <button class="ghost grow" id="btnSkip">Skip step ⏭</button>
     <button class="ghost grow" id="btnEndWk">End workout</button>
   </div>
+  <div class="note">📱 Keep this screen open: iPhone pauses web apps while you use other apps, so speed changes can't be sent then. If you do switch away, the app catches up when you return.</div>
 </div>
 
 
@@ -358,6 +370,7 @@
 
 
 <div id="tip"></div>
+<div id="sumOverlay" class="overlay" style="display:none"><div class="sheet" id="sumSheet"></div></div>
 <div class="stopbar" style="display:none"><button class="danger" id="btnStop">STOP</button></div>
 
 
@@ -615,6 +628,11 @@ function onTreadmillData(dv){
   if(d.hr !== undefined && (!st.hrSrc || st.hrSrc === 'treadmill')){ st.hr = d.hr; st.hrSrc = 'treadmill'; }
   if(!st._logged || st._logged < 3){ log('Data', hex(dv), JSON.stringify(d)); st._logged = (st._logged||0) + 1; }
   if(pendingSnap && resumeArmed) doResume();
+  if(pendingCatch){
+    const pc = pendingCatch; pendingCatch = null; let g = pc.wall;
+    if(pc.el != null && st.elapsed != null && st.elapsed >= pc.el && st.elapsed - pc.el <= pc.wall + 5) g = Math.max(0, st.elapsed - pc.el - 1);
+    catchUp(g);
+  }
 }
 
 // ---------- Heart-rate monitor (optional) ----------
@@ -637,11 +655,14 @@ async function connectHr(){
 const W = { active:false, wk:null, steps:[], idx:0, stepSec:0, stepStartDist:0, warned:false, override:null,
             guardSec:0, stepdowns:0, done:false };
 
-function startWorkout(wk){
+async function startWorkout(wk){
+  if(!st.connected && !st.demo){
+    await connectTreadmill();                      // opens the Bluetooth picker straight from the Start tap
+    if(!st.connected){ showBanner('Not connected. Pick FS-439079 in the list to start (or tap Demo on the Run tab to try it out).'); return; }
+  }
   if(W.active && !confirm('A workout is already running. Replace it?')) return;
   if(wk.locked && !confirm('This one is Phase 3 and not unlocked in your plan yet (earliest early December). Start anyway?')) return;
-  if(!st.connected && !st.demo){ showBanner('Connect the treadmill first (or tap Demo to try it out).'); return; }
-  unlockAudio(); requestWakeLock();
+  unlockAudio(); keepAwake(true);
   Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
   clearLive();
   resetSession();
@@ -735,10 +756,10 @@ function finishWorkout(manual){
   W.done = true; W.active = false;
   speak(manual ? 'Workout ended' : 'Workout complete. Well done.');
   if(S.autoStop || manual) stopBelt();
-  saveSession(W.wk.name);
+  endSession(W.wk.name);
   clearLive();
   document.getElementById('wkCard').style.display = 'none';
-  releaseWakeLock();
+  keepAwake(false);
 }
 
 // ---------- Session stats & history ----------
@@ -754,11 +775,10 @@ function sessionDistKm(){
   if(st.distance != null && st.distAtStart == null) return st.distance / 1000;
   return st.ownDist / 1000;
 }
-function saveSession(name){
-  if(st.beltSec < 60){ log('Session < 1 min, not saved'); return; }
-  const mins = s => +(s/60).toFixed(2);
+function buildSession(name){
+  const mins = x => +(x/60).toFixed(2);
   const hasHr = st.hrN > 0;
-  const rec = {
+  return {
     id: newId('s'),
     date: localDate(st.sessionStartAt),
     time: st.sessionStartAt.toTimeString().slice(0,5),
@@ -776,13 +796,165 @@ function saveSession(name){
     kcal: sessionKcal() ?? '',
     stepdowns: W.stepdowns || 0, notes: '',
   };
-  const hist = load('pt_history', []); hist.unshift(rec); save('pt_history', hist);
+}
+// Called when a workout ends (finished / End workout / STOP): show the summary to review, adjust and save.
+function endSession(name){
+  if(st.beltSec < 60){ log('Session < 1 min, not saved'); st.sessionStarted = false; clearLive(); return; }
+  const rec = buildSession(name);
+  st.sessionStarted = false; clearLive();
+  if(st.hr) rec.end_hr = st.hr;
+  save('pt_pending', rec);
+  openSummary(rec, false);
+  if(st.hr){                                         // measure 1-minute recovery HR automatically
+    const id = rec.id;
+    SUMT = setInterval(() => {
+      if(!SUM || SUM.rec.id !== id){ clearInterval(SUMT); return; }
+      const left = Math.max(0, 60 - Math.round((Date.now() - SUM.openedAt) / 1000));
+      const el = $('recNote'); if(el) el.textContent = left ? `Measuring 1-minute recovery… ${left}s (keep the HR monitor on)` : '';
+      if(!left){ clearInterval(SUMT); if(st.hr && !SUM.touched.has('recovery_hr')) setSumField('recovery_hr', st.hr); }
+    }, 1000);
+  }
+}
+function saveRecord(rec){
+  const hist = load('pt_history', []); const k = hist.findIndex(r => r.id === rec.id);
+  if(k >= 0) hist[k] = rec; else hist.unshift(rec);
+  save('pt_history', sortSessions(hist.map(normSession)));
   renderHistory(); renderReports(); renderHome();
   log('Saved session', rec);
   Sync.enqueue({type:'session', data: rec});
-  st.sessionStarted = false;
-  clearLive();
 }
+
+// ---------- Post-workout summary (review / adjust / save) ----------
+let SUM = null, SUMT = null;
+const FUEL = ['Fasted','Banana / dates','Meal 3h+ ago','Meal under 3h ago'];
+const AIR = ['Off','Fan','AC'];
+function mmssToMin(v){ v = String(v).trim(); if(v === '') return ''; if(v.includes(':')){ const [m, x] = v.split(':'); return +(+m + (+x || 0)/60).toFixed(2); } return isNaN(+v) ? '' : +v; }
+function minToMmss(m){ return m === '' || m == null ? '' : mmTxt(m); }
+function parseCond(notes){
+  const c = {temp:'', rh:'', fuel:'', air:'', sleep:''}; let rest = notes || '';
+  const m = rest.match(/^\[([^\]]*)\]\s*/);
+  if(m){ rest = rest.slice(m[0].length);
+    for(const t of m[1].split('·').map(x => x.trim())){
+      let mm;
+      if((mm = t.match(/^(-?[\d.]+)°C$/))) c.temp = +mm[1];
+      else if((mm = t.match(/^RH ([\d.]+)%$/))) c.rh = +mm[1];
+      else if((mm = t.match(/^sleep ([\d.]+)h$/))) c.sleep = +mm[1];
+      else if((mm = t.match(/^air (\w+)$/))) c.air = mm[1];
+      else if(FUEL.includes(t)) c.fuel = t;
+    }
+  }
+  return {c, rest};
+}
+function condText(c){
+  const p = [];
+  if(c.temp !== '') p.push(c.temp + '°C');
+  if(c.rh !== '') p.push('RH ' + c.rh + '%');
+  if(c.temp !== '' && c.rh !== '') p.push('DP ' + Math.round(c.temp - (100 - c.rh) / 5) + '°C');
+  if(c.fuel) p.push(c.fuel);
+  if(c.air) p.push('air ' + c.air);
+  if(c.sleep !== '') p.push('sleep ' + c.sleep + 'h');
+  return p.length ? '[' + p.join(' · ') + ']' : '';
+}
+function planCheck(r){
+  if(r.avg_hr === '' || r.run_min === '' || +r.run_min < 15) return null;
+  const items = [];
+  const add = (lvl, txt) => items.push({lvl, txt});
+  if(r.z4plus_min !== ''){ const z = +r.z4plus_min; add(z <= 4 ? 'ok' : z <= 6 ? 'warn' : 'bad', `Zone 4+ ${mmTxt(z)} (target ≲3–4 min, limit 5–6)`); }
+  const a = +r.avg_hr; add(a <= 141 ? 'ok' : a <= 143 ? 'warn' : 'bad', `Average HR ${a} (target ≲141)`);
+  if(r.z3_min !== '' && r.z4plus_min !== ''){ const sh = Math.round(((+r.z3_min) + (+r.z4plus_min)) / (+r.run_min) * 100); add(sh <= 70 ? 'ok' : sh <= 80 ? 'warn' : 'bad', `Zone 3+4 = ${Math.min(sh, 100)}% of run time (headroom ≲65–70%)`); }
+  if(r.recovery_hr !== '' && r.max_hr !== ''){ const d = (+r.max_hr) - (+r.recovery_hr); add(d >= 30 ? 'ok' : 'warn', `Recovery: ${d} bpm drop from max in 1 min (≥30 is good after a hard run)`); }
+  const worst = items.some(i => i.lvl === 'bad') ? 'bad' : items.some(i => i.lvl === 'warn') ? 'warn' : 'ok';
+  const verdict = {ok:'✓ Clean pass: this speed is under control.', warn:'⚠ Amber: repeat this session before changing anything.', bad:'✕ Over the line: repeat at this speed (or step down) next time.'}[worst];
+  return {items, worst, verdict};
+}
+function openSummary(rec, editing){
+  const {c, rest} = parseCond(rec.notes);
+  const last = S.lastCond || {};
+  if(!editing){ if(!c.fuel) c.fuel = last.fuel || ''; if(!c.air) c.air = last.air || ''; }
+  SUM = {rec: {...rec}, cond: c, notes: rest, editing, touched: new Set(), openedAt: Date.now()};
+  const r = SUM.rec, F = (k, label, val, type = 'number', step = '1') =>
+    `<div><label>${label}</label><input data-k="${k}" type="${type}" inputmode="decimal" step="${step}" value="${val === '' || val == null ? '' : esc(String(val))}"></div>`;
+  $('sumSheet').innerHTML = `
+    <div class="small">${editing ? 'EDIT SESSION' : 'WORKOUT COMPLETE'}</div>
+    <h2>${editing ? '✎ ' : '🎉 '}${esc(r.workout)}</h2>
+    <div class="metrics" id="sumHero" style="margin:10px 0"></div>
+    <div class="card" id="sumCheck" style="display:none"></div>
+    <div class="card"><div class="h3">Session</div>
+      <label>Name</label><input data-k="workout" type="text" value="${esc(r.workout)}">
+      <div class="fgrid">${F('date','Date', r.date, 'date')}${F('time','Start time', r.time, 'time')}</div></div>
+    <div class="card"><div class="h3">Distance &amp; time</div><div class="small">Check against the treadmill console and correct if needed.</div>
+      <div class="fgrid">${F('distance_km','Distance (km)', r.distance_km, 'number', '0.01')}${F('duration_min','Duration (mm:ss)', minToMmss(r.duration_min), 'text')}
+      ${F('run_min','Of which running (mm:ss)', minToMmss(r.run_min), 'text')}${F('kcal','Calories', r.kcal)}</div></div>
+    <div class="card"><div class="h3">Heart rate</div><div class="small" id="recNote"></div>
+      <div class="fgrid">${F('avg_hr','Average', r.avg_hr)}${F('max_hr','Max', r.max_hr)}${F('end_hr','At workout end', r.end_hr)}${F('recovery_hr','1 min after', r.recovery_hr)}</div>
+      <label style="margin-top:10px">Time in zones (mm:ss)</label>
+      <div class="fgrid4">${F('z1_min','Z1', minToMmss(r.z1_min), 'text')}${F('z2_min','Z2', minToMmss(r.z2_min), 'text')}${F('z3_min','Z3', minToMmss(r.z3_min), 'text')}${F('z4plus_min','Z4+', minToMmss(r.z4plus_min), 'text')}</div>
+      <div class="note">No HR monitor connected? Copy these from the Apple Watch workout (Fitness app → the workout).</div></div>
+    <div class="card"><div class="h3">Conditions</div>
+      <div class="fgrid">
+        <div><label>Temperature (°C)</label><input data-c="temp" type="number" inputmode="decimal" value="${c.temp}"></div>
+        <div><label>Humidity (%)</label><input data-c="rh" type="number" inputmode="numeric" value="${c.rh}"></div></div>
+      <div class="small" id="sumDew" style="margin-top:4px"></div>
+      <label>Fuel before</label><div class="seg" data-cseg="fuel">${FUEL.map(f => `<button data-v="${f}">${f}</button>`).join('')}</div>
+      <label>Fan / AC</label><div class="seg" data-cseg="air">${AIR.map(f => `<button data-v="${f}">${f}</button>`).join('')}</div>
+      <div class="fgrid"><div><label>Sleep last night (h)</label><input data-c="sleep" type="number" inputmode="decimal" step="0.5" value="${c.sleep}"></div></div></div>
+    <div class="card"><div class="h3">Notes</div><textarea id="sumNotes" style="min-height:70px" placeholder="How did it feel? Anything unusual?">${esc(rest)}</textarea></div>
+    <div class="row" style="margin:6px 0 4px">
+      <button class="ghost grow" id="sumDiscard">${editing ? 'Cancel' : 'Discard'}</button>
+      <button class="primary grow" id="sumSave" style="flex:2">${editing ? 'Save changes' : 'Save session'}</button>
+    </div>`;
+  $('sumOverlay').style.display = 'flex'; $('sumSheet').scrollTop = 0;
+  const sh = $('sumSheet');
+  sh.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => {
+    const k = el.dataset.k; SUM.touched.add(k);
+    if(['workout','date','time'].includes(k)) SUM.rec[k] = el.value;
+    else if(['duration_min','run_min','z1_min','z2_min','z3_min','z4plus_min'].includes(k)) SUM.rec[k] = mmssToMin(el.value);
+    else SUM.rec[k] = el.value === '' ? '' : +el.value;
+    sumDerived();
+  }));
+  sh.querySelectorAll('[data-c]').forEach(el => el.addEventListener('input', () => { SUM.cond[el.dataset.c] = el.value === '' ? '' : +el.value; sumDerived(); }));
+  sh.querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const k = g.dataset.cseg; SUM.cond[k] = SUM.cond[k] === b.dataset.v ? '' : b.dataset.v; sumDerived(); }));
+  $('sumSave').onclick = saveSummary;
+  $('sumDiscard').onclick = () => {
+    if(!editing && !confirm('Discard this session? It will not be saved.')) return;
+    if(!editing) try{ localStorage.removeItem('pt_pending'); }catch(e){}
+    closeSummary();
+  };
+  sumDerived();
+}
+function setSumField(k, v){ if(!SUM) return; SUM.rec[k] = v; const el = $('sumSheet').querySelector(`[data-k="${k}"]`); if(el) el.value = v; sumDerived(); }
+function sumDerived(){
+  const r = SUM.rec, c = SUM.cond;
+  const dist = +r.distance_km || 0, dur = +r.duration_min || 0;
+  r.avg_speed = dur ? +(dist / (dur/60)).toFixed(2) : '';
+  const tile = (v, l) => `<div class="m"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}</div></div>`;
+  const n = normSession(r);
+  $('sumHero').innerHTML = tile(dur ? mmTxt(dur) : '–', 'Time') + tile(dist.toFixed(2), 'km') + tile(r.avg_speed || '–', 'avg km/h') +
+    tile(n.run_km != null ? n.run_km.toFixed(2) : '–', '🏃 run km') + tile(n.walk_km != null ? n.walk_km.toFixed(2) : '–', '🚶 walk km') + tile(r.avg_hr || '–', 'avg HR');
+  $('sumDew').textContent = c.temp !== '' && c.rh !== '' ? `Dew point ≈ ${Math.round(c.temp - (100 - c.rh)/5)}°C (${c.temp - (100 - c.rh)/5 >= 18 ? 'sticky: expect higher HR' : 'comfortable'})` : '';
+  $('sumSheet').querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.classList.toggle('on', SUM.cond[g.dataset.cseg] === b.dataset.v)));
+  const pc = planCheck(r), box = $('sumCheck');
+  if(pc){ box.style.display = 'block';
+    box.innerHTML = `<div class="h3">Plan check</div><div class="verdict ${pc.worst}">${pc.verdict}</div>` +
+      pc.items.map(i => `<div class="chk"><span class="ic ${i.lvl}">${i.lvl === 'ok' ? '✓' : i.lvl === 'warn' ? '!' : '✕'}</span><span>${esc(i.txt)}</span></div>`).join('') +
+      '<div class="note">Based on your running-plan guardrails. Hot/humid or after-meal sessions aren\'t comparable.</div>';
+  } else box.style.display = 'none';
+}
+function saveSummary(){
+  const r = SUM.rec, c = SUM.cond;
+  if(!String(r.workout).trim()) return showBanner('Give the session a name.');
+  if(!r.date) return showBanner('Pick a date.');
+  if(r.run_min !== '' && r.duration_min !== '' && +r.run_min > +r.duration_min) r.run_min = r.duration_min;
+  if(r.run_min === 0 || r.run_min === '') r.run_speed = r.run_min === 0 ? '' : r.run_speed;
+  r.notes = [condText(c), $('sumNotes').value.trim()].filter(Boolean).join(' ');
+  if(!SUM.editing){ S.lastCond = {fuel: c.fuel, air: c.air}; save('pt_settings', S); }
+  saveRecord(r);
+  try{ localStorage.removeItem('pt_pending'); }catch(e){}
+  const ed = SUM.editing; closeSummary();
+  showBanner(ed ? 'Session updated' : 'Session saved' + (Sync.configured() ? ' and syncing to your Sheet' : ''));
+}
+function closeSummary(){ SUM = null; if(SUMT) clearInterval(SUMT); $('sumOverlay').style.display = 'none'; }
 function newId(p){ return p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 function localDate(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 
@@ -868,6 +1040,53 @@ const Sync = {
   },
 };
 
+// ---------- Background catch-up (iPhone pauses web pages in other apps) ----------
+let pendingCatch = null;
+function accountGap(sec, running){
+  if(!(st.speed > 0.3)) return;
+  st.beltSec += sec; st.ownDist += st.speed / 3.6 * sec;
+  if(running){ st.runSec += sec; st.runDist += st.speed / 3.6 * sec; }
+}
+function catchUp(gap){
+  if(!(gap > 1)) return;
+  log('Page was paused for', Math.round(gap) + 's, catching up');
+  const startIdx = W.idx; let left = gap;
+  if(W.active && !W.done){
+    while(left > 0.5 && W.idx < W.steps.length){
+      const step = W.steps[W.idx];
+      if(step.kind === 'dist') break;              // distance steps follow the treadmill's own distance counter
+      const use = Math.min(left, step.value - W.stepSec);
+      accountGap(use, step.mode === 'run'); W.stepSec += use; left -= use;
+      if(W.stepSec >= step.value - 0.01){ W.idx++; W.stepSec = 0; W.warned = false; W.override = null; W.guardSec = 0; W.stepStartDist = curDist(); }
+    }
+  }
+  if(left > 0.5) accountGap(left, isRunningNow());
+  if(!W.active) return;
+  if(W.idx >= W.steps.length){
+    showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app. The workout finished in the meantime, so it has been ended and saved.`);
+    finishWorkout(); return;
+  }
+  const cur = W.steps[W.idx], moved = W.idx !== startIdx;
+  if(moved){ applyStep(cur); speak(`Welcome back. Now ${cur.label}, ${Math.min(cur.speed, S.maxSpeed).toFixed(1)}`); beep(2); }
+  showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app, so speed changes couldn't be sent then. ` +
+    (moved ? `Caught up: now on "${cur.label}" at ${Math.min(cur.speed, S.maxSpeed).toFixed(1)} km/h.` : 'Workout time has been updated.') + ' Keep this screen open during workouts.');
+  renderWorkout();
+}
+
+// ---------- Keep the screen awake during workouts ----------
+const NOSLEEP_MP4 = 'data:video/mp4;base64,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';                       // tiny silent video from NoSleep.js (MIT), for browsers without Wake Lock
+let nsVideo = null;
+function keepAwake(on){
+  if(on){
+    requestWakeLock();
+    if(!('wakeLock' in navigator)){
+      if(!nsVideo){ nsVideo = document.createElement('video'); nsVideo.setAttribute('playsinline', ''); nsVideo.setAttribute('muted', ''); nsVideo.muted = true; nsVideo.loop = true;
+        nsVideo.src = NOSLEEP_MP4; nsVideo.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none'; document.body.appendChild(nsVideo); }
+      nsVideo.play().catch(() => {});
+    }
+  } else { releaseWakeLock(); if(nsVideo) nsVideo.pause(); }
+}
+
 // ---------- Refresh-proof: live snapshot + resume ----------
 let pendingSnap = null, resumeArmed = false;
 const LIVE_MAX_AGE = 45 * 60 * 1000;
@@ -917,7 +1136,7 @@ function doResume(){
     Object.assign(W, {active:true, done:false, wk:{name:snap.wk.name, steps:snap.wk.steps}, steps:snap.wk.steps, idx:snap.idx,
       stepSec: snap.stepSec + gap, stepStartDist, override: snap.override, stepdowns: snap.stepdowns, warned:false, guardSec:0});
     $('wkCard').style.display = 'block';
-    requestWakeLock();
+    keepAwake(true);
     renderWorkout();
     showTab('run');
     speak('Workout resumed');
@@ -927,7 +1146,13 @@ function doResume(){
 
 // ---------- Main tick ----------
 function tick(){
-  const now = Date.now(); const dt = Math.min(5, (now - st.lastTick) / 1000); st.lastTick = now;
+  const now = Date.now(); const raw = (now - st.lastTick) / 1000; st.lastTick = now;
+  if(raw > 4 && !st.demo && (W.active || st.speed > 0.3)){
+    // The page was paused (another app / screen locked). Wait for fresh treadmill data to measure the gap exactly.
+    if(st.connected && !pendingCatch){ pendingCatch = {wall: raw - 1, el: st.elapsed}; setTimeout(() => { if(pendingCatch){ const g = pendingCatch.wall; pendingCatch = null; catchUp(g); } }, 3000); }
+    else if(!st.connected) catchUp(raw - 1);
+  }
+  const dt = Math.min(1.5, raw);
   if(st.demo) demoStep(dt);
   if(st.speed > 0.3){
     st.beltSec += dt;
@@ -1278,6 +1503,8 @@ function renderHistory(){
   const h = load('pt_history', []);
   if(!h.length){ $('histTable').innerHTML = '<div class="small">No sessions yet. Sessions longer than 1 minute are saved.</div>'; return; }
   $('histTable').innerHTML = sessionTable(h.map(normSession), true);
+  $('histTable').querySelectorAll('[data-edits]').forEach(b => b.onclick = () => {
+    const rec = load('pt_history', []).find(r => r.id === b.dataset.edits); if(rec) openSummary(normSession(rec), true); });
   $('histTable').querySelectorAll('[data-dels]').forEach(b => b.onclick = () => {
     if(!confirm('Delete this session' + (Sync.configured() ? ' (also from the Google Sheet)' : '') + '?')) return;
     save('pt_history', load('pt_history', []).filter(r => r.id !== b.dataset.dels));
@@ -1289,7 +1516,7 @@ function sessionTable(rows, withDelete){
     rows.map(r => `<tr><td>${esc(r.date)}${r.time ? '<br><span class="small">' + esc(r.time) + '</span>' : ''}</td><td>${esc(r.workout)}${r.source === 'import' ? ' <span class="small">(imported)</span>' : ''}</td>
       <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td><td>${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}${r.run_km != null ? `<br><span class="small">🏃${r.run_km.toFixed(1)} 🚶${r.walk_km.toFixed(1)}</span>` : ''}</td>
       <td>${r.avg_hr !== '' ? r.avg_hr + ' / ' + r.max_hr : '–'}</td><td>${mmTxt(r.z4plus_min)}</td>
-      ${withDelete ? `<td><button class="ghost" style="padding:4px 8px" data-dels="${esc(r.id)}">✕</button></td>` : ''}</tr>`).join('') + '</table>';
+      ${withDelete ? `<td style="white-space:nowrap"><button class="ghost" style="padding:4px 8px" data-edits="${esc(r.id)}">✎</button> <button class="ghost" style="padding:4px 8px" data-dels="${esc(r.id)}">✕</button></td>` : ''}</tr>`).join('') + '</table>';
 }
 function exportCsv(){
   const h = load('pt_history', []); if(!h.length) return;
@@ -1526,7 +1753,7 @@ function speak(text){
 let wakeLock = null;
 async function requestWakeLock(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
 function releaseWakeLock(){ try{ wakeLock && wakeLock.release(); wakeLock = null; }catch(e){} }
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && W.active) requestWakeLock(); });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ if(W.active) keepAwake(true); tick(); } });
 
 // ---------- Demo mode (simulated treadmill, for trying the app) ----------
 const demo = {target:0, running:false, hr:95, dist:0};
@@ -1566,7 +1793,7 @@ function applyTheme(){
   const m = document.querySelector('meta[name=theme-color]'); if(m) m.content = dark ? '#000000' : '#f4f6f9';
 }
 if(window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
-function setPill(t, cls){ const p = $('connPill'); p.textContent = t; p.className = 'pill ' + (cls || ''); }
+function setPill(t, cls){ const p = $('connPill'); p.textContent = (st.connected || st.demo || /^Connecting/.test(t)) ? t : '🔗 Connect'; p.className = 'pill ' + (cls || ''); }
 function showBanner(t){ const b = $('alertBanner'); b.textContent = t; b.classList.add('show'); }
 function hideBanner(){ $('alertBanner').classList.remove('show'); }
 function flashCard(){ const c = $('wkCard'); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
@@ -1576,10 +1803,11 @@ function init(){
   applyTheme();
   if(!navigator.bluetooth) $('unsupported').classList.add('show');
   $('btnConnect').onclick = () => st.connected ? disconnect() : connectTreadmill();
+  $('connPill').onclick = () => { if(st.connected || st.demo){ showTab('run'); return; } connectTreadmill(); };
   $('btnHr').onclick = connectHr;
   $('btnScanAll').onclick = () => { if(st.connected) disconnect(); connectTreadmill(true); };
   $('btnDemo').onclick = startDemo;
-  $('btnStop').onclick = () => { if(W.active) finishWorkout(true); else { stopBelt(); if(st.sessionStarted) saveSession('Manual'); } };
+  $('btnStop').onclick = () => { if(W.active) finishWorkout(true); else { stopBelt(); if(st.sessionStarted) endSession('Manual session'); } };
   $('btnSkip').onclick = skipStep;
   $('btnEndWk').onclick = () => { if(confirm('End the workout now? The session will be saved.')) finishWorkout(true); };
   $('alertBanner').onclick = hideBanner;
@@ -1633,6 +1861,7 @@ function init(){
   save('pt_history', sortSessions(load('pt_history', []).map(normSession)));
   renderWorkoutList(); renderHistory(); renderTargets(); renderReports(); renderPlanEditor(); renderHome();
   checkLive();
+  { const pend = load('pt_pending', null); if(pend) openSummary(pend, false); }
   if(Sync.configured()){ Sync.migrateLocal(); Sync.pull(); }
   document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && !W.active) Sync.pull(); });
   window.addEventListener('online', () => Sync.flush());
@@ -1644,7 +1873,7 @@ window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault();
 init();
 
 // Expose for testing
-window.__pt = {flattenSteps, openEditor, renderHome, Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
+window.__pt = {planCheck, openSummary, flattenSteps, openEditor, renderHome, Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
 </script>
 </body>
 </html>
