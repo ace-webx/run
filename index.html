@@ -631,11 +631,6 @@ function onTreadmillData(dv){
   if(d.hr !== undefined && (!st.hrSrc || st.hrSrc === 'treadmill')){ st.hr = d.hr; st.hrSrc = 'treadmill'; }
   if(!st._logged || st._logged < 3){ log('Data', hex(dv), JSON.stringify(d)); st._logged = (st._logged||0) + 1; }
   if(pendingSnap && resumeArmed) doResume();
-  if(pendingCatch){
-    const pc = pendingCatch; pendingCatch = null; let g = pc.wall;
-    if(pc.el != null && st.elapsed != null && st.elapsed >= pc.el && st.elapsed - pc.el <= pc.wall + 5) g = Math.max(0, st.elapsed - pc.el - 1);
-    catchUp(g);
-  }
 }
 
 // ---------- Heart-rate monitor (optional) ----------
@@ -704,7 +699,7 @@ function workoutTick(dt){
   if(!W.active || W.done) return;
   const step = W.steps[W.idx];
   const moving = st.speed > 0.3;
-  if(moving) W.stepSec += dt;
+  W.stepSec += dt;
   const rem = stepRemainingSec(step);
   const next = W.steps[W.idx + 1];
 
@@ -767,7 +762,7 @@ function finishWorkout(manual){
 
 // ---------- Session stats & history ----------
 function resetSession(){
-  Object.assign(st, {beltSec:0, ownDist:0, runSec:0, runDist:0, zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0, sessionStarted:true, sessionStartAt:new Date(), distAtStart: st.distance, kcalAtStart: st.kcal});
+  Object.assign(st, {elOffset:null, lastEl:null, beltSec:0, ownDist:0, runSec:0, runDist:0, zoneSec:[0,0,0,0,0], hrSum:0, hrN:0, hrMax:0, sessionStarted:true, sessionStartAt:new Date(), distAtStart: st.distance, kcalAtStart: st.kcal});
 }
 function sessionKcal(){
   if(st.kcal == null) return null;
@@ -943,8 +938,11 @@ function sumDerived(){
   r.avg_speed = dur ? +(dist / (dur/60)).toFixed(2) : '';
   const tile = (v, l) => `<div class="m"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}</div></div>`;
   const n = normSession(r);
-  $('sumHero').innerHTML = tile(dur ? mmTxt(dur) : '–', 'Time') + tile(dist.toFixed(2), 'km') + tile(r.avg_speed || '–', 'avg km/h') +
-    tile(n.run_km != null ? n.run_km.toFixed(2) : '–', '🏃 run km') + tile(n.walk_km != null ? n.walk_km.toFixed(2) : '–', '🚶 walk km') + tile(r.avg_hr || '–', 'avg HR');
+  const pace = (m, km) => m > 0 && km > 0.01 ? mmTxt(m / km) : '–';
+  const rm = +r.run_min || 0;
+  $('sumHero').innerHTML = tile(dur ? mmTxt(dur) : '–', 'Time') + tile(dist.toFixed(2), 'km') + tile(pace(dur, dist), 'avg pace /km') +
+    tile(r.avg_speed || '–', 'avg km/h') + tile(n.run_km ? pace(rm, n.run_km) : '–', '🏃 run pace /km') + tile(r.avg_hr || '–', 'avg HR') +
+    tile(n.run_km != null ? n.run_km.toFixed(2) : '–', '🏃 run km') + tile(n.walk_km != null ? n.walk_km.toFixed(2) : '–', '🚶 walk km') + tile(r.kcal !== '' ? r.kcal : '–', 'kcal');
   $('sumDew').textContent = c.temp !== '' && c.rh !== '' ? `Dew point ≈ ${Math.round(c.temp - (100 - c.rh)/5)}°C (${c.temp - (100 - c.rh)/5 >= 18 ? 'sticky: expect higher HR' : 'comfortable'})` : '';
   $('sumSheet').querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.classList.toggle('on', SUM.cond[g.dataset.cseg] === b.dataset.v)));
   const pc = planCheck(r), box = $('sumCheck');
@@ -1060,15 +1058,14 @@ const Sync = {
 };
 
 // ---------- Background catch-up (iPhone pauses web pages in other apps) ----------
-let pendingCatch = null;
 function accountGap(sec, running){
   if(!(st.speed > 0.3)) return;
   st.beltSec += sec; st.ownDist += st.speed / 3.6 * sec;
   if(running){ st.runSec += sec; st.runDist += st.speed / 3.6 * sec; }
 }
-function catchUp(gap){
+function catchUp(gap, paused = true){
   if(!(gap > 1)) return;
-  log('Page was paused for', Math.round(gap) + 's, catching up');
+  log((paused ? 'Page was paused for ' : 'Treadmill timer jumped ') + Math.round(gap) + 's, catching up');
   const startIdx = W.idx; let left = gap;
   if(W.active && !W.done){
     while(left > 0.5 && W.idx < W.steps.length){
@@ -1082,12 +1079,12 @@ function catchUp(gap){
   if(left > 0.5) accountGap(left, isRunningNow());
   if(!W.active) return;
   if(W.idx >= W.steps.length){
-    showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app. The workout finished in the meantime, so it has been ended and saved.`);
+    if(paused) showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app. The workout finished in the meantime, so it has been ended and saved.`);
     finishWorkout(); return;
   }
   const cur = W.steps[W.idx], moved = W.idx !== startIdx;
-  if(moved){ applyStep(cur); speak(`Welcome back. Now ${cur.label}, ${Math.min(cur.speed, S.maxSpeed).toFixed(1)}`); beep(2); }
-  showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app, so speed changes couldn't be sent then. ` +
+  if(moved){ applyStep(cur); speak(`${paused ? 'Welcome back. ' : ''}Now ${cur.label}, ${Math.min(cur.speed, S.maxSpeed).toFixed(1)}`); beep(2); }
+  if(paused) showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app, so speed changes couldn't be sent then. ` +
     (moved ? `Caught up: now on "${cur.label}" at ${Math.min(cur.speed, S.maxSpeed).toFixed(1)} km/h.` : 'Workout time has been updated.') + ' Keep this screen open during workouts.');
   renderWorkout();
 }
@@ -1141,7 +1138,7 @@ function doResume(){
   Object.assign(st, {
     beltSec: snap.beltSec + gap, ownDist: snap.ownDist, runSec: snap.runSec || 0, runDist: snap.runDist || 0, zoneSec: snap.zoneSec, hrSum: snap.hrSum, hrN: snap.hrN, hrMax: snap.hrMax,
     sessionStarted: true, sessionStartAt: new Date(snap.sessionStartAt),
-    distAtStart: snap.distAtStart, kcalAtStart: snap.kcalAtStart, lastTick: Date.now(),
+    distAtStart: snap.distAtStart, kcalAtStart: snap.kcalAtStart, lastTick: Date.now(), elOffset: null, lastEl: null,
   });
   let stepStartDist = snap.stepStartDist;
   if(st.distance != null && snap.tmDist != null){
@@ -1164,27 +1161,32 @@ function doResume(){
 }
 
 // ---------- Main tick ----------
+// Session time follows the treadmill's own elapsed-time counter whenever it reports one, so the app matches
+// the console exactly (also after the page was paused). Without it, our own clock runs while the belt moves.
+function beltNow(raw){
+  if(!st.demo && st.connected && st.elapsed != null){
+    if(st.elOffset == null || st.lastEl == null || st.elapsed < st.lastEl) st.elOffset = st.elapsed - st.beltSec;   // first reading / counter reset
+    st.lastEl = st.elapsed;
+    return Math.max(st.beltSec, st.elapsed - st.elOffset);
+  }
+  return st.beltSec + (st.speed > 0.3 ? raw : 0);
+}
 function tick(){
   const now = Date.now(); const raw = (now - st.lastTick) / 1000; st.lastTick = now;
-  if(raw > 4 && !st.demo && (W.active || st.speed > 0.3)){
-    // The page was paused (another app / screen locked). Wait for fresh treadmill data to measure the gap exactly.
-    if(st.connected && !pendingCatch){ pendingCatch = {wall: raw - 1, el: st.elapsed}; setTimeout(() => { if(pendingCatch){ const g = pendingCatch.wall; pendingCatch = null; catchUp(g); } }, 3000); }
-    else if(!st.connected) catchUp(raw - 1);
-  }
-  const dt = Math.min(1.5, raw);
-  if(st.demo) demoStep(dt);
-  if(st.speed > 0.3){
-    st.beltSec += dt;
-    st.ownDist += st.speed / 3.6 * dt;
-    if(isRunningNow()){ st.runSec += dt; st.runDist += st.speed / 3.6 * dt; }
-    if(st.hr){
-      const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += dt;
-      st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr);
+  if(st.demo) demoStep(Math.min(1.5, raw));
+  if(st.speed > 0.3 && !st.sessionStarted && !pendingSnap) resetSession();
+  const d = st.sessionStarted ? beltNow(st.demo ? Math.min(1.5, raw) : raw) - st.beltSec : 0;
+  if(d > 4 && (W.active || st.speed > 0.3)) catchUp(d, raw > 4);
+  else {
+    if(d > 0){
+      st.beltSec += d; st.ownDist += st.speed / 3.6 * d;
+      if(isRunningNow()){ st.runSec += d; st.runDist += st.speed / 3.6 * d; }
+      if(st.hr){ const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += d; }
     }
-    if(!st.sessionStarted && !pendingSnap) resetSession();
+    workoutTick(Math.max(0, d));
   }
+  if(st.speed > 0.3 && st.hr){ st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr); }
   if(st.hrSrc === 'strap' && st.hrAt && now - st.hrAt > 10000){ st.hr = null; }
-  workoutTick(dt);
   saveLive();
   render();
 }
