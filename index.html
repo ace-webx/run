@@ -5,13 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f4f6f9">
+<script>try{document.documentElement.dataset.theme=(JSON.parse(localStorage.getItem("pt_settings")||"{}").theme)||"auto"}catch(e){document.documentElement.dataset.theme="auto"}</script>
 <title>Pawan Treadmill</title>
 <style>
   :root{
     --bg:#f4f6f9; --card:#ffffff; --card2:#eef1f5; --line:#e1e5eb;
-    --text:#111827; --muted:#6b7280; --accent:#16a34a; --accent2:#2563eb;
-    --warn:#b45309; --danger:#dc2626;
+    --text:#111827; --muted:#6b7280; --accent:#16a34a; --accent2:#2563eb; --on-accent:#ffffff; --on-accent2:#ffffff;
+    --warn:#b45309; --danger:#dc2626; --good:#15803d; --bad:#b91c1c; --done:#a7dcb9; --flash:#ffe7b3;
+    --banner-bg:#fff4e0; --banner-line:#f5d9a8; --ok-bg:#e8f5ec; --ok-line:#b7e1c4; --ok-text:#14532d;
+    --m-speed:var(--text); --m-hr:var(--text); --m-dist:var(--text); --shadow:0 1px 3px rgba(16,24,40,.06);
     --z1:#6da7ec; --z2:#1baf7a; --z3:#eda100; --z4:#e34948; --z5:#b91c1c;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+    color-scheme:light;
+  }
+  :root[data-theme="dark"]{
+    --bg:#000000; --card:#1c1c1e; --card2:#2c2c2e; --line:#3a3a3c;
+    --text:#f5f5f7; --muted:#98989f; --accent:#a3e635; --accent2:#22d3ee; --on-accent:#0b1a00; --on-accent2:#00141a;
+    --warn:#ffd60a; --danger:#ff375f; --good:#a3e635; --bad:#ff6b8a; --done:#3f5a1a; --flash:#3a3212;
+    --banner-bg:#2a2410; --banner-line:#4a3f12; --ok-bg:#12261a; --ok-line:#1f4a2c; --ok-text:#b8f5c9;
+    --m-speed:#a3e635; --m-hr:#ff375f; --m-dist:#22d3ee; --shadow:none;
+    --z1:#3987e5; --z2:#199e70; --z3:#c98500; --z4:#e0457b; --z5:#c2185b;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    color-scheme:dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root[data-theme="auto"]{
+    --bg:#000000; --card:#1c1c1e; --card2:#2c2c2e; --line:#3a3a3c;
+    --text:#f5f5f7; --muted:#98989f; --accent:#a3e635; --accent2:#22d3ee; --on-accent:#0b1a00; --on-accent2:#00141a;
+    --warn:#ffd60a; --danger:#ff375f; --good:#a3e635; --bad:#ff6b8a; --done:#3f5a1a; --flash:#3a3212;
+    --banner-bg:#2a2410; --banner-line:#4a3f12; --ok-bg:#12261a; --ok-line:#1f4a2c; --ok-text:#b8f5c9;
+    --m-speed:#a3e635; --m-hr:#ff375f; --m-dist:#22d3ee; --shadow:none;
+    --z1:#3987e5; --z2:#199e70; --z3:#c98500; --z4:#e0457b; --z5:#c2185b;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    color-scheme:dark;
+    }
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;background:var(--bg);color:var(--text);overscroll-behavior:none;
@@ -27,12 +54,12 @@
     font-weight:600;cursor:pointer;touch-action:manipulation}
   button:active{transform:scale(.97)}
   button:disabled{opacity:.4}
-  .primary{background:var(--accent);color:#fff}
-  .blue{background:var(--accent2);color:#fff}
+  .primary{background:var(--accent);color:var(--on-accent)}
+  .blue{background:var(--accent2);color:var(--on-accent2)}
   .danger{background:var(--danger);color:#fff}
   .ghost{background:transparent;border:1px solid var(--line)}
   .grow{flex:1}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0;box-shadow:var(--shadow)}
   .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .m{background:var(--card2);border-radius:12px;padding:10px;text-align:center}
   .m .v{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -48,9 +75,9 @@
   .prog > div{height:100%;background:var(--accent);width:0%;transition:width .5s}
   .steps{display:flex;gap:2px;height:22px;margin-top:8px;align-items:flex-end}
   .steps div{background:var(--card2);border-radius:3px;min-width:3px}
-  .steps div.done{background:#a7dcb9}
+  .steps div.done{background:var(--done)}
   .steps div.cur{background:var(--accent)}
-  .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#ffffff;border-top:1px solid var(--line);
+  .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);
     padding:6px 6px calc(env(safe-area-inset-bottom) + 6px);z-index:10}
   .tabs button{flex:1;background:transparent;color:var(--muted);font-size:13px;padding:10px 4px}
   .tabs button.on{color:var(--accent)}
@@ -73,17 +100,17 @@
   td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
   th{color:var(--muted);font-weight:600}
   .small{font-size:12px;color:var(--muted)}
-  .banner{padding:10px 12px;border-radius:12px;background:#fff4e0;border:1px solid #f5d9a8;color:var(--warn);font-size:13px;margin:8px 0;display:none}
+  .banner{padding:10px 12px;border-radius:12px;background:var(--banner-bg);border:1px solid var(--banner-line);color:var(--warn);font-size:13px;margin:8px 0;display:none}
   .banner.show{display:block}
   .seg{display:flex;gap:6px;flex-wrap:wrap}
   .seg button{padding:8px 10px;font-size:13px;background:var(--card2)}
-  .seg button.on{background:var(--text);color:#fff}
+  .seg button.on{background:var(--text);color:var(--bg)}
   .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
   .kpi{background:var(--card2);border-radius:12px;padding:10px}
   .kpi .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
   .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .kpi .d{font-size:12px;margin-top:2px;color:var(--muted)}
-  .kpi .d.good{color:#15803d}.kpi .d.bad{color:#b91c1c}
+  .kpi .d.good{color:var(--good)}.kpi .d.bad{color:var(--bad)}
   .chart{width:100%;height:auto;display:block;touch-action:pan-y}
   .chart text{font-size:10px;fill:var(--muted);font-family:inherit}
   .chart .grid{stroke:var(--line);stroke-width:1}
@@ -99,7 +126,7 @@
   .toggle{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
   .toggle input{width:auto;transform:scale(1.3)}
   .flash{animation:flash 1s ease-in-out 3}
-  @keyframes flash{50%{background:#ffe7b3}}
+  @keyframes flash{50%{background:var(--flash)}}
 </style>
 </head>
 <body>
@@ -114,7 +141,7 @@
   You can still try <b>Demo mode</b> below.
 </div>
 <div id="alertBanner" class="banner"></div>
-<div id="resumeCard" class="banner" style="background:#e8f5ec;border-color:#b7e1c4;color:#14532d">
+<div id="resumeCard" class="banner" style="background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok-text)">
   <div id="resumeText"></div>
   <div class="row" style="margin-top:8px">
     <button class="primary grow" id="btnResume">Reconnect &amp; resume</button>
@@ -133,11 +160,11 @@
 <!-- LIVE METRICS -->
 <div class="card">
   <div class="metrics">
-    <div class="m big"><div class="v" id="mSpeed">0.0</div><div class="l">km/h</div></div>
+    <div class="m big"><div class="v" id="mSpeed" style="color:var(--m-speed)">0.0</div><div class="l">km/h</div></div>
     <div class="m"><div class="v" id="mTime">00:00</div><div class="l">Time</div></div>
-    <div class="m"><div class="v" id="mDist">0.00</div><div class="l">km</div></div>
+    <div class="m"><div class="v" id="mDist" style="color:var(--m-dist)">0.00</div><div class="l">km</div></div>
     <div class="m"><div class="v" id="mPace">--:--</div><div class="l">min/km</div></div>
-    <div class="m hrbox"><div class="v" id="mHr">--</div><div class="l" id="mHrL">HR</div></div>
+    <div class="m hrbox"><div class="v" id="mHr" style="color:var(--m-hr)">--</div><div class="l" id="mHrL">HR</div></div>
     <div class="m"><div class="v" id="mIncl">0</div><div class="l">Incline</div></div>
     <div class="m"><div class="v" id="mKcal">--</div><div class="l">kcal</div></div>
   </div>
@@ -246,6 +273,11 @@
     <div class="toggle"><span>Voice announcements</span><input type="checkbox" id="sVoice"></div>
   </div>
   <div class="card">
+    <h3 style="margin:0">Appearance</h3>
+    <label>Theme</label>
+    <select id="sTheme"><option value="auto">Follow iPhone / Mac setting</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </div>
+  <div class="card">
     <h3 style="margin:0">Sync with Google Sheet</h3>
     <div class="small">Enter the same URL and key on iPhone and Mac. Custom workouts and history then sync between them.</div>
     <label>Apps Script Web App URL</label><input id="sHook" placeholder="https://script.google.com/macros/s/.../exec">
@@ -315,7 +347,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const DEFAULTS = {maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
+const DEFAULTS = {theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -907,11 +939,11 @@ function exportCsv(){
 }
 
 // ---------- Fitness reports ----------
-const ZCOL = ['#6da7ec','#1baf7a','#eda100','#e34948'];                // validated: light blue, green, yellow, red
+const ZCOL = ['var(--z1)','var(--z2)','var(--z3)','var(--z4)'];        // validated per theme (light: #6da7ec/#1baf7a/#eda100/#e34948; dark: #3987e5/#199e70/#c98500/#e0457b)
 const SPEED_SERIES = [                                                   // first three categorical slots (validated all-pairs)
-  {name:'5.0 km/h (Zone 2)', color:'#2a78d6', test:v => v < 5.3},
-  {name:'5.5 km/h', color:'#eb6834', test:v => v >= 5.3 && v < 5.65},
-  {name:'5.8+ km/h', color:'#1baf7a', test:v => v >= 5.65},
+  {name:'5.0 km/h (Zone 2)', color:'var(--s1)', test:v => v < 5.3},
+  {name:'5.5 km/h', color:'var(--s2)', test:v => v >= 5.3 && v < 5.65},
+  {name:'5.8+ km/h', color:'var(--s3)', test:v => v >= 5.65},
 ];
 let repPeriod = 'week';
 const DAY = 86400000;
@@ -1002,7 +1034,7 @@ function renderReports(){
   $('chTrend').innerHTML = tr.length >= 2 ? lineChart(series, a.getTime(), b.getTime(), 'bpm') : '<div class="small" style="padding:16px 0">Needs at least 2 treadmill sessions with heart rate in this period. Try "All time".</div>';
 
   const rc = cur.filter(r => r.recovery_hr !== '' && !/outdoor|5k/i.test(r.workout)).map(r => ({x: parseD(r.date).getTime(), y: r.recovery_hr, tip:`<b>${r.date}</b> · ${esc(r.workout)}<br>1-min recovery HR ${r.recovery_hr}`})).sort((p,q) => p.x - q.x);
-  $('chRecovery').innerHTML = rc.length >= 2 ? lineChart([{name:'Recovery HR', color:'#2a78d6', pts:rc}], a.getTime(), b.getTime(), 'bpm') : '<div class="small" style="padding:16px 0">Not enough recovery readings in this period.</div>';
+  $('chRecovery').innerHTML = rc.length >= 2 ? lineChart([{name:'Recovery HR', color:'var(--s1)', pts:rc}], a.getTime(), b.getTime(), 'bpm') : '<div class="small" style="padding:16px 0">Not enough recovery readings in this period.</div>';
 
   $('repTable').innerHTML = cur.length ? sessionTable(sortSessions(cur.slice()), false) : '<div class="small">No sessions in this period.</div>';
   bindTips();
@@ -1010,7 +1042,7 @@ function renderReports(){
 
 // ---- tiny SVG chart kit (thin marks, recessive grid, hover/tap tooltips) ----
 const CW = 340, CH = 170, PL = 30, PR = 8, PT = 10, PB = 22;
-function niceMax(v){ if(v <= 0) return 3; const st = v / 3, p = Math.pow(10, Math.floor(Math.log10(st))); for(const m of [1,2,2.5,5,10]) if(m*p >= st) return m*p*3; return 30*p; }
+function niceMax(v){ if(v <= 0) return 3; const st = v / 3, p = Math.pow(10, Math.floor(Math.log10(st))); for(const m of [1,1.5,2,2.5,3,4,5,6,8,10]) if(m*p >= st) return m*p*3; return 30*p; }
 function yGrid(max, min = 0, fmt = v => Math.round(v)){
   let g = '';
   for(let i = 0; i <= 3; i++){ const v = min + (max - min) * i / 3; const y = PT + (CH - PT - PB) * (1 - i/3);
@@ -1028,7 +1060,7 @@ function barChart(items){
   let bars = '', hits = '', xs = [];
   items.forEach((it, i) => {
     const x = PL + iw * i + (iw - bw) / 2, h = it.value / max * ph; xs.push(x + bw/2);
-    bars += `<path d="${roundTop(x, PT + ph - h, bw, h, 4)}" fill="#2a78d6"/>`;
+    bars += `<path d="${roundTop(x, PT + ph - h, bw, h, 4)}" style="fill:var(--s1)"/>`;
     hits += `<rect class="hit" x="${PL + iw*i}" y="${PT}" width="${iw}" height="${ph}" data-tip="${esc(it.tip)}"/>`;
   });
   return `<svg class="chart" viewBox="0 0 ${CW} ${CH}">${yGrid(max)}${bars}${xLabels(items.map(i => i.label), xs)}${hits}</svg>`;
@@ -1044,8 +1076,8 @@ function stackChart(items){
       const h = v / max * ph; if(h <= 0) return;
       const isTop = it.parts.slice(k+1).every(z => z <= 0);
       y -= h;
-      bars += isTop ? `<path d="${roundTop(x, y, bw, h, 4)}" fill="${ZCOL[k]}" stroke="#fff" stroke-width="2" paint-order="stroke"/>`
-                    : `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${ZCOL[k]}" stroke="#fff" stroke-width="2" paint-order="stroke"/>`;
+      bars += isTop ? `<path d="${roundTop(x, y, bw, h, 4)}" style="fill:${ZCOL[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`
+                    : `<rect x="${x}" y="${y}" width="${bw}" height="${h}" style="fill:${ZCOL[k]};stroke:var(--card)" stroke-width="2" paint-order="stroke"/>`;
     });
     hits += `<rect class="hit" x="${PL + iw*i}" y="${PT}" width="${iw}" height="${ph}" data-tip="${esc(it.tip)}"/>`;
   });
@@ -1059,8 +1091,8 @@ function lineChart(series, x0, x1, unit){
   const ph = CH - PT - PB, X = x => PL + (x - x0) / (x1 - x0) * (CW - PL - PR - 6) + 3, Y = y => PT + ph * (1 - (y - lo) / (hi - lo));
   let marks = '';
   series.forEach(s => {
-    if(s.pts.length > 1) marks += `<polyline fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${s.pts.map(p => X(p.x) + ',' + Y(p.y)).join(' ')}"/>`;
-    s.pts.forEach(p => { marks += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="${s.color}" stroke="#fff" stroke-width="2"/>`
+    if(s.pts.length > 1) marks += `<polyline fill="none" style="stroke:${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${s.pts.map(p => X(p.x) + ',' + Y(p.y)).join(' ')}"/>`;
+    s.pts.forEach(p => { marks += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" style="fill:${s.color};stroke:var(--card)" stroke-width="2"/>`
       + `<circle class="hit" cx="${X(p.x)}" cy="${Y(p.y)}" r="12" data-tip="${esc(p.tip)}"/>`; });
   });
   const ticks = 4; let xl = '';
@@ -1157,6 +1189,12 @@ function demoStep(dt){
 function clamp(v, a, b){ return Math.min(b, Math.max(a, v)); }
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function applyTheme(){
+  document.documentElement.dataset.theme = S.theme || 'auto';
+  const dark = S.theme === 'dark' || (S.theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  const m = document.querySelector('meta[name=theme-color]'); if(m) m.content = dark ? '#000000' : '#f4f6f9';
+}
+if(window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
 function setPill(t, cls){ const p = $('connPill'); p.textContent = t; p.className = 'pill ' + (cls || ''); }
 function showBanner(t){ const b = $('alertBanner'); b.textContent = t; b.classList.add('show'); }
 function hideBanner(){ $('alertBanner').classList.remove('show'); }
@@ -1164,6 +1202,7 @@ function flashCard(){ const c = $('wkCard'); c.classList.remove('flash'); void c
 
 // ---------- Wire up UI ----------
 function init(){
+  applyTheme();
   if(!navigator.bluetooth) $('unsupported').classList.add('show');
   $('btnConnect').onclick = () => st.connected ? disconnect() : connectTreadmill();
   $('btnHr').onclick = connectHr;
@@ -1201,6 +1240,8 @@ function init(){
     S.maxSpeed = clamp(S.maxSpeed, 1, 16);
     save('pt_settings', S); showBanner('Settings saved');
   };
+  $('sTheme').value = S.theme || 'auto';
+  $('sTheme').onchange = () => { S.theme = $('sTheme').value; save('pt_settings', S); applyTheme(); };
   $('btnSyncNow').onclick = async () => { S.hook = $('sHook').value.trim(); S.key = $('sKey').value.trim(); save('pt_settings', S);
     if(!Sync.configured()) return showBanner('Enter both the URL and the key.');
     Sync.migrateLocal(); await Sync.pull(true); };
