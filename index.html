@@ -788,6 +788,11 @@ function normSession(r){
 }
 function sortSessions(a){ return a.sort((x,y) => (y.date + y.time).localeCompare(x.date + x.time)); }
 function setSync(t, bad){ const el = $('syncStatus'); if(!el) return; el.textContent = t ? '☁︎ ' + t : ''; el.style.color = bad ? 'var(--warn)' : 'var(--muted)'; }
+async function readJson(res){
+  const t = await res.text();
+  try{ return JSON.parse(t); }
+  catch(e){ log('Sheet replied with non-JSON:', t.slice(0, 160)); throw new Error(/<html|<!DOCTYPE/i.test(t) ? 'the script returned a web page instead of data (not deployed as "Anyone", or a script error)' : 'unexpected reply'); }
+}
 const Sync = {
   busy: false,
   configured(){ return !!(S.hook && S.key); },
@@ -795,7 +800,7 @@ const Sync = {
   enqueue(op){ const q = this.queue(); q.push(op); save('pt_queue', q); this.flush(); },
   async post(body){
     const res = await fetch(S.hook, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body)});
-    return res.json();
+    return readJson(res);
   },
   async flush(){
     if(!this.configured() || this.busy) return;
@@ -811,18 +816,28 @@ const Sync = {
   async pull(verbose){
     if(!this.configured()){ setSync(''); return; }
     await this.flush();
-    if(this.queue().length){ return; }          // never overwrite local changes that haven't uploaded yet
     try{
       setSync('Syncing…');
       const res = await fetch(S.hook + (S.hook.includes('?') ? '&' : '?') + 'action=pull&key=' + encodeURIComponent(S.key));
-      const d = await res.json();
-      if(!d.ok){ setSync('Sync error: ' + d.error, true); if(verbose) showBanner('Sync error: ' + d.error); return; }
-      save('pt_custom', (d.workouts || []).map(w => ({id:String(w.id), name:w.name, desc:w.desc || '', steps:w.steps})));
-      save('pt_history', sortSessions((d.sessions || []).map(normSession)));
+      const d = await readJson(res);
+      if(!d.ok){ setSync('Sync error: ' + d.error, true); if(verbose) showBanner('Sync error: ' + d.error + (d.error === 'Wrong key' ? '. The key in Settings must match KEY in the Apps Script exactly.' : '')); return; }
+      // Sheet is the master copy; changes still waiting to upload are layered on top so nothing local is lost
+      let ws = (d.workouts || []).map(w => ({id:String(w.id), name:w.name, desc:w.desc || '', steps:w.steps}));
+      let ss = (d.sessions || []).map(normSession);
+      const q = this.queue();
+      for(const op of q){
+        if(op.type === 'workout'){ ws = ws.filter(w => w.id !== op.data.id); ws.push(op.data); }
+        if(op.type === 'deleteWorkout') ws = ws.filter(w => w.id !== op.id);
+        if(op.type === 'session' && !ss.some(r => r.id === op.data.id)) ss.push(normSession(op.data));
+        if(op.type === 'deleteSession') ss = ss.filter(r => r.id !== op.id);
+      }
+      save('pt_custom', ws); save('pt_history', sortSessions(ss));
       renderWorkoutList(); renderHistory(); renderReports(); renderHome(); renderPlanEditor();
-      setSync('Synced ' + new Date().toTimeString().slice(0,5) + ' · ' + (d.sessions || []).length + ' sessions');
-      if(verbose) showBanner('Synced: ' + (d.workouts || []).length + ' custom workouts, ' + (d.sessions || []).length + ' sessions');
-    }catch(e){ setSync('Offline: showing saved data', true); log('Sync pull failed', errText(e)); if(verbose) showBanner('Could not reach the Sheet: check the URL and that the script is deployed for "Anyone".'); }
+      const imported = ss.filter(r => r.source === 'import').length;
+      setSync('Synced ' + new Date().toTimeString().slice(0,5) + ' · ' + ss.length + ' sessions' + (q.length ? ` · ${q.length} change(s) waiting to upload` : ''), q.length > 0);
+      if(verbose) showBanner(`Synced: ${ws.length} custom workouts, ${ss.length} sessions (${imported} imported from your history)` +
+        (imported ? '' : '. No imported history found: run seedHistory once in the Apps Script editor.'));
+    }catch(e){ setSync('Can\'t reach the Sheet: showing saved data', true); log('Sync pull failed', errText(e)); if(verbose) showBanner('Could not reach the Sheet: ' + errText(e) + '. Check the URL ends in /exec and the deployment is set to "Anyone".'); }
   },
   migrateLocal(){                               // first connection: upload anything created before sync existed
     if(load('pt_migrated', false)) return;
