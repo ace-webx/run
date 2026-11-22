@@ -779,7 +779,7 @@ function buildSession(name){
   return {
     id: newId('s'),
     date: localDate(st.sessionStartAt),
-    time: st.sessionStartAt.toTimeString().slice(0,5),
+    time: st.sessionStartAt.toTimeString().slice(0,5), started_at: st.sessionStartAt.toISOString(),
     workout: name, source: 'app',
     duration_min: mins(st.beltSec),
     distance_km: +sessionDistKm().toFixed(2),
@@ -892,7 +892,8 @@ function openSummary(rec, editing){
       <div class="fgrid">${F('avg_hr','Average', r.avg_hr)}${F('max_hr','Max', r.max_hr)}${F('end_hr','At workout end', r.end_hr)}${F('recovery_hr','1 min after', r.recovery_hr)}</div>
       <label style="margin-top:10px">Time in zones (mm:ss)</label>
       <div class="fgrid4">${F('z1_min','Z1', minToMmss(r.z1_min), 'text')}${F('z2_min','Z2', minToMmss(r.z2_min), 'text')}${F('z3_min','Z3', minToMmss(r.z3_min), 'text')}${F('z4plus_min','Z4+', minToMmss(r.z4plus_min), 'text')}</div>
-      <div class="note">No HR monitor connected? Copy these from the Apple Watch workout (Fitness app → the workout).</div></div>
+      <button class="blue" id="sumWatchHr" style="width:100%;margin-top:10px">❤️ Get HR from Apple Watch</button>
+      <div class="note">${r.hr_source === 'watch' ? '✓ Heart rate came from your Apple Watch. ' : ''}Fills average, max, zones, HR at end and 1-min recovery from the Watch workout, via the "Treadmill HR" shortcut. Best right after the run (the Watch workout must have been recording). You can also type values in.</div></div>
     <div class="card"><div class="h3">Conditions</div>
       <div class="fgrid">
         <div><label>Temperature (°C)</label><input data-c="temp" type="number" inputmode="decimal" value="${c.temp}"></div>
@@ -920,6 +921,7 @@ function openSummary(rec, editing){
   sh.querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => {
     const k = g.dataset.cseg; SUM.cond[k] = SUM.cond[k] === b.dataset.v ? '' : b.dataset.v; sumDerived(); }));
   $('sumSave').onclick = saveSummary;
+  $('sumWatchHr').onclick = getWatchHr;
   if($('sumDelete')) $('sumDelete').onclick = () => { if(!confirm('Delete "' + SUM.rec.workout + '"' + (Sync.configured() ? ' (also from the Google Sheet)' : '') + '?')) return; const id = SUM.rec.id; closeSummary(); deleteSession(id); showBanner('Session deleted'); };
   $('sumAllRun').onclick = () => { if(SUM.rec.duration_min === '') return showBanner('Enter the duration first.'); setSumField('run_min', SUM.rec.duration_min); SUM.rec.run_speed = ''; };
   $('sumAllWalk').onclick = () => { setSumField('run_min', 0); SUM.rec.run_speed = ''; };
@@ -952,10 +954,11 @@ function sumDerived(){
       '<div class="note">Based on your running-plan guardrails. Hot/humid or after-meal sessions aren\'t comparable.</div>';
   } else box.style.display = 'none';
 }
-function saveSummary(){
+function commitSummary(){
   const r = SUM.rec, c = SUM.cond;
-  if(!String(r.workout).trim()) return showBanner('Give the session a name.');
-  if(!r.date) return showBanner('Pick a date.');
+  if(!String(r.workout).trim()){ showBanner('Give the session a name.'); return null; }
+  if(!r.date){ showBanner('Pick a date.'); return null; }
+  if(r.time && (SUM.touched.has('date') || SUM.touched.has('time') || !r.started_at)){ const d = new Date(`${r.date}T${r.time}:00`); if(!isNaN(d)) r.started_at = d.toISOString(); }
   if(r.run_min !== '' && r.duration_min !== '' && +r.run_min > +r.duration_min) r.run_min = r.duration_min;
   const dist = +r.distance_km || 0, dur = +r.duration_min || 0, rm = r.run_min === '' ? null : +r.run_min;
   if(rm === 0) r.run_speed = '';
@@ -967,8 +970,41 @@ function saveSummary(){
   if(!SUM.editing){ S.lastCond = {fuel: c.fuel, air: c.air}; save('pt_settings', S); }
   saveRecord(r);
   try{ localStorage.removeItem('pt_pending'); }catch(e){}
-  const ed = SUM.editing; closeSummary();
+  return {r, ed: SUM.editing};
+}
+function saveSummary(){
+  const res = commitSummary(); if(!res) return;
+  const ed = res.ed; closeSummary();
   showBanner(ed === 'new' ? 'Session added' : ed ? 'Session updated' : 'Session saved' + (Sync.configured() ? ' and syncing to your Sheet' : ''));
+}
+// ---------- Heart rate from Apple Watch (via the "Treadmill HR" iPhone Shortcut → your Sheet) ----------
+async function getWatchHr(){
+  if(!Sync.configured()) return showBanner('Set up "Sync with Google Sheet" in Settings first: the Watch shortcut sends the heart rate there.');
+  if(!SUM.rec.time && !SUM.rec.started_at) return showBanner('Enter the start time first.');
+  if(!(+SUM.rec.duration_min > 0)) return showBanner('Enter the duration first.');
+  const res = commitSummary(); if(!res) return;
+  const r = res.r, btn = $('sumWatchHr');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving session to your Sheet…'; }
+  for(let i = 0; i < 4 && Sync.queue().length; i++) await Sync.flush();
+  if(Sync.queue().length){ if(btn){ btn.disabled = false; btn.textContent = '❤️ Get HR from Apple Watch'; } return showBanner('Could not save the session to your Sheet (check internet), so the shortcut has nothing to update yet. Try again.'); }
+  const start = r.started_at ? new Date(r.started_at) : new Date(`${r.date}T${r.time}:00`);
+  // Shortcuts' "Start Date is in the last N days" filter: 1 = today's session, 2 = yesterday's, etc.
+  const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.max(1, Math.round((dayStart(new Date()) - dayStart(start)) / 86400000) + 1);
+  save('pt_awaitHr', {id: r.id, at: Date.now()});
+  closeSummary();
+  showBanner('Opening the "Treadmill HR" shortcut… When it shows the result, come back here.');
+  (window.__openUrl || (u => { location.href = u; }))('shortcuts://run-shortcut?name=' + encodeURIComponent('Treadmill HR') + '&input=text&text=' + encodeURIComponent(r.id + '|' + days));
+}
+function checkAwaitHr(sessions){
+  const w = load('pt_awaitHr', null); if(!w) return;
+  const rec = sessions.find(x => x.id === w.id);
+  if(rec && (rec.hr_source === 'watch')){
+    try{ localStorage.removeItem('pt_awaitHr'); }catch(e){}
+    openSummary(normSession(rec), true);
+    showBanner('❤️ Heart rate added from your Apple Watch. Check the plan check, then tap Save changes.');
+  } else if(Date.now() - w.at > 15 * 60000){ try{ localStorage.removeItem('pt_awaitHr'); }catch(e){} }
+  else showBanner('Waiting for heart rate from the Watch shortcut… If the shortcut showed an error, it explains why. Pull to sync: Settings → Save & sync now.');
 }
 function closeSummary(){ SUM = null; if(SUMT) clearInterval(SUMT); $('sumOverlay').style.display = 'none'; }
 function newId(p){ return p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -983,7 +1019,7 @@ function normSession(r){
   const ms = v => { if(v === '' || v == null) return ''; const p = String(v).split(':'); return +(+p[0] + (+p[1]||0)/60).toFixed(2); };
   if(o.z1_min === undefined && o.z1 !== undefined){ o.z1_min = ms(o.z1); o.z2_min = ms(o.z2); o.z3_min = ms(o.z3); o.z4plus_min = ms(o.z4plus); delete o.z1; delete o.z2; delete o.z3; delete o.z4plus; }
   for(const k of NUM_FIELDS){ const v = o[k]; o[k] = (v === '' || v == null || isNaN(+v)) ? '' : +v; }
-  o.date = String(o.date || '').slice(0,10); o.time = String(o.time || '');
+  o.date = String(o.date || '').slice(0,10); o.time = String(o.time || ''); o.started_at = o.started_at ? String(o.started_at) : ''; o.hr_source = o.hr_source || '';
   o.workout = String(o.workout || ''); o.source = o.source || 'app'; o.notes = o.notes || '';
   // run vs walk split (derived; not stored in the Sheet)
   o.run_km = o.walk_km = null;
@@ -1010,10 +1046,15 @@ const Sync = {
     const res = await fetch(S.hook, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(body)});
     return readJson(res);
   },
-  async flush(){
-    if(!this.configured() || this.busy) return;
-    const q = this.queue(); if(!q.length) return;
+  flush(){
+    if(!this.configured()) return Promise.resolve();
+    if(this.busy) return this.current;                 // an upload is already running: wait for that one
+    const q = this.queue(); if(!q.length) return Promise.resolve();
     this.busy = true;
+    this.current = this._push(q);
+    return this.current;
+  },
+  async _push(q){
     try{
       const r = await this.post({key: S.key, ops: q});
       if(r && r.ok){ save('pt_queue', this.queue().slice(q.length)); setSync('Saved to Google Sheet ' + new Date().toTimeString().slice(0,5)); log('Synced', q.length, 'change(s)'); }
@@ -1042,6 +1083,7 @@ const Sync = {
       save('pt_custom', ws); save('pt_history', sortSessions(ss));
       renderWorkoutList(); renderHistory(); renderReports(); renderHome(); renderPlanEditor();
       const imported = ss.filter(r => r.source === 'import').length;
+      checkAwaitHr(ss);
       setSync('Synced ' + new Date().toTimeString().slice(0,5) + ' · ' + ss.length + ' sessions' + (q.length ? ` · ${q.length} change(s) waiting to upload` : ''), q.length > 0);
       if(verbose) showBanner(`Synced: ${ws.length} custom workouts, ${ss.length} sessions (${imported} imported from your history)` +
         (imported ? '' : '. No imported history found: run seedHistory once in the Apps Script editor.'));
