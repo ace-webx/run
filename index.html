@@ -437,9 +437,9 @@
 // ---------- HR zones (Karvonen, rest 61 / max 183 — from the plan) ----------
 const ZONES = [
   {name:'Z1', max:132, color:'var(--z1)'},
-  {name:'Z2', max:145, color:'var(--z2)'},
-  {name:'Z3', max:157, color:'var(--z3)'},
-  {name:'Z4', max:169, color:'var(--z4)'},
+  {name:'Z2', max:144, color:'var(--z2)'},
+  {name:'Z3', max:156, color:'var(--z3)'},
+  {name:'Z4', max:168, color:'var(--z4)'},
   {name:'Z5', max:999, color:'var(--z5)'},
 ];
 function zoneOf(hr){ if(!hr) return -1; return ZONES.findIndex(z => hr <= z.max); }
@@ -454,7 +454,7 @@ const BUILTIN = [
   {id:'r58l6', name:'5.8 → last 5 @ 6.0', desc:'Next speed lever (one change only). WU 5 → 20 @ 5.8 → 5 @ 6.0 → CD 5',
     steps:[WU(), RUN(20,5.8), RUN(5,6.0,'Run (finish)'), CD()]},
   {id:'r58x30', name:'Run 5.8 × 30', desc:'Duration lever instead of speed. WU 5 → 30 @ 5.8 → CD 5', steps:[WU(), RUN(30,5.8), CD()]},
-  {id:'z2', name:'Zone 2 — 30 min', desc:'Thursday easy session. Aim for HR 133–145; adjust speed by hand if HR goes outside that range',
+  {id:'z2', name:'Zone 2 — 30 min', desc:'Thursday easy session. Aim for HR 133–144; adjust speed by hand if HR goes outside that range',
     steps:[WU(), {label:'Zone 2 steady', kind:'time', value:30*60, speed:5.0, incline:0, mode:'run'}, CD()]},
   {id:'incl', name:'Incline walk', desc:'WU 5 flat → 25 @ 4.8, incline 8 → CD 5 flat. Target 120–135 bpm',
     steps:[WU(5,4.5), {label:'Incline walk', kind:'time', value:25*60, speed:4.8, incline:8, mode:'walk'}, CD(5,4.5)]},
@@ -465,7 +465,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const APP_VERSION = '2026-11-24d (copy any session)';
+const APP_VERSION = '2026-11-24e (Apple zones)';
 const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
