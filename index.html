@@ -333,6 +333,7 @@
       <input type="date" id="repFrom"><input type="date" id="repTo">
     </div>
     <div class="small" id="repRange" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:8px"><button class="ghost grow" id="repCopy">📋 Copy this period for Claude</button><button class="ghost" id="repShare" style="display:none">Share…</button></div>
   </div>
   <div class="card"><div class="kpis" id="repKpis"></div><div class="note">Arrows compare with the previous period of the same length.</div></div>
   <div class="card"><div class="h3">Training volume</div><div class="small" id="volSub"></div><div id="chVolume"></div></div>
@@ -464,7 +465,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const APP_VERSION = '2026-11-24b (progress ring)';
+const APP_VERSION = '2026-11-24d (copy any session)';
 const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
@@ -920,7 +921,8 @@ function planCheck(r){
   if(r.z4plus_min !== ''){ const z = +r.z4plus_min; add(z <= 4 ? 'ok' : z <= 6 ? 'warn' : 'bad', `Zone 4+ ${mmTxt(z)} (target ≲3–4 min, limit 5–6)`); }
   const a = +r.avg_hr; add(a <= 141 ? 'ok' : a <= 143 ? 'warn' : 'bad', `Average HR ${a} (target ≲141)`);
   if(r.z3_min !== '' && r.z4plus_min !== ''){ const sh = Math.round(((+r.z3_min) + (+r.z4plus_min)) / (+r.run_min) * 100); add(sh <= 70 ? 'ok' : sh <= 80 ? 'warn' : 'bad', `Zone 3+4 = ${Math.min(sh, 100)}% of run time (headroom ≲65–70%)`); }
-  if(r.recovery_hr !== '' && r.max_hr !== ''){ const d = (+r.max_hr) - (+r.recovery_hr); add(d >= 30 ? 'ok' : 'warn', `Recovery: ${d} bpm drop from max in 1 min (≥30 is good after a hard run)`); }
+  const easy = /zone\s*2|walk|recovery/i.test(r.workout) || (r.run_speed !== '' && +r.run_speed < 5.3);   // ≥30 bpm rule is for hard runs only
+  if(!easy && r.recovery_hr !== '' && r.max_hr !== ''){ const d = (+r.max_hr) - (+r.recovery_hr); add(d >= 30 ? 'ok' : 'warn', `Recovery: ${d} bpm drop from max in 1 min (≥30 is good after a hard run)`); }
   const worst = items.some(i => i.lvl === 'bad') ? 'bad' : items.some(i => i.lvl === 'warn') ? 'warn' : 'ok';
   const verdict = {ok:'✓ Clean pass: this speed is under control.', warn:'⚠ Amber: repeat this session before changing anything.', bad:'✕ Over the line: repeat at this speed (or step down) next time.'}[worst];
   return {items, worst, verdict};
@@ -964,6 +966,10 @@ function openSummary(rec, editing){
       <label>Fan / AC</label><div class="seg" data-cseg="air">${AIR.map(f => `<button data-v="${f}">${f}</button>`).join('')}</div>
       <div class="fgrid"><div><label>Sleep last night (h)</label><input data-c="sleep" type="number" inputmode="decimal" step="0.5" value="${c.sleep}"></div></div></div>
     <div class="card"><div class="h3">Notes</div><textarea id="sumNotes" style="min-height:70px" placeholder="How did it feel? Anything unusual?">${esc(rest)}</textarea></div>
+    <div class="row" style="margin:6px 0 8px">
+      <button class="ghost grow" id="sumCopy">📋 Copy for Claude</button>
+      <button class="ghost" id="sumShare" style="display:none">Share…</button>
+    </div>
     <div class="row" style="margin:6px 0 4px">
       <button class="ghost grow" id="sumDiscard">${editing ? 'Cancel' : 'Discard'}</button>
       <button class="primary grow" id="sumSave" style="flex:2">${isNew ? 'Add session' : editing ? 'Save changes' : 'Save session'}</button>
@@ -983,6 +989,8 @@ function openSummary(rec, editing){
     const k = g.dataset.cseg; SUM.cond[k] = SUM.cond[k] === b.dataset.v ? '' : b.dataset.v; sumDerived(); }));
   $('sumSave').onclick = saveSummary;
   $('sumWatchHr').onclick = getWatchHr;
+  $('sumCopy').onclick = () => copyForClaude(sessionText(liveSumRecord()));
+  if(navigator.share){ $('sumShare').style.display = ''; $('sumShare').onclick = () => shareText(sessionText(liveSumRecord())); }
   if($('sumDelete')) $('sumDelete').onclick = () => { if(!confirm('Delete "' + SUM.rec.workout + '"' + (Sync.configured() ? ' (also from the Google Sheet)' : '') + '?')) return; const id = SUM.rec.id; closeSummary(); deleteSession(id); showBanner('Session deleted'); };
   $('sumAllRun').onclick = () => { if(SUM.rec.duration_min === '') return showBanner('Enter the duration first.'); setSumField('run_min', SUM.rec.duration_min); SUM.rec.run_speed = ''; };
   $('sumAllWalk').onclick = () => { setSumField('run_min', 0); SUM.rec.run_speed = ''; };
@@ -1706,10 +1714,16 @@ function sessionTable(rows){
       <td>${r.duration_min !== '' ? r.duration_min.toFixed(0) : ''}</td>
       <td style="white-space:nowrap">${r.distance_km !== '' ? r.distance_km.toFixed(2) : ''}${r.run_km != null ? `<br><span class="small">🏃${r.run_km.toFixed(1)} 🚶${r.walk_km.toFixed(1)}</span>` : ''}</td>
       <td style="white-space:nowrap">${r.avg_hr !== '' ? r.avg_hr + (r.max_hr !== '' ? '<span class="small">/' + r.max_hr + '</span>' : '') : '<span class="small">–</span>'}${r.z4plus_min !== '' && r.z4plus_min > 0 ? '<br><span class="small">Z4+ ' + mmTxt(r.z4plus_min) + '</span>' : ''}</td>
-      <td><button class="ghost" style="padding:6px 9px" data-edits="${esc(r.id)}" aria-label="Edit session">✎</button></td></tr>`).join('') + '</table>';
+      <td style="white-space:nowrap"><button class="ghost" style="padding:6px 8px" data-copys="${esc(r.id)}" aria-label="Copy for Claude">📋</button> <button class="ghost" style="padding:6px 9px" data-edits="${esc(r.id)}" aria-label="Edit session">✎</button></td></tr>`).join('') + '</table>';
 }
 function editSession(id){ const rec = load('pt_history', []).find(r => r.id === id); if(rec) openSummary(normSession(rec), true); }
-function bindSessionTable(box){ box.querySelectorAll('[data-row]').forEach(tr => tr.onclick = () => editSession(tr.dataset.row)); }
+function bindSessionTable(box){
+  box.querySelectorAll('[data-row]').forEach(tr => tr.onclick = e => { if(e.target.closest('[data-copys]')) return; editSession(tr.dataset.row); });
+  box.querySelectorAll('[data-copys]').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const rec = load('pt_history', []).find(r => r.id === b.dataset.copys); if(rec) copyForClaude(sessionText(rec));
+  });
+}
 function deleteSession(id){
   save('pt_history', load('pt_history', []).filter(r => r.id !== id));
   Sync.enqueue({type:'deleteSession', id}); renderHistory(); renderReports(); renderHome();
@@ -1726,6 +1740,89 @@ function exportCsv(){
   const csv = [cols.join(',')].concat(h.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g,'""')}"`).join(','))).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
   a.download = 'treadmill-history.csv'; a.click();
+}
+
+// ---------- Copy / share for Claude ----------
+function liveSumRecord(){                              // current values on the summary screen (incl. unsaved edits)
+  const r = {...SUM.rec};
+  r.notes = [condText(SUM.cond), ($('sumNotes') ? $('sumNotes').value.trim() : '')].filter(Boolean).join(' ');
+  return r;
+}
+function fmtKm(d){ return d == null || d === '' ? '–' : (d >= 1 ? (+d).toFixed(2) + ' km' : Math.round(d * 1000) + ' m'); }
+function sessionLines(r0, short){
+  const r = normSession(r0), L = [];
+  const dt = r.date ? parseD(r.date).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short', year:'numeric'}) : '';
+  const pace = r.duration_min && r.distance_km ? mmTxt(r.duration_min / r.distance_km) + '/km' : '–';
+  const {c, rest} = parseCond(r.notes);
+  const cond = condText(c).replace(/^\[|\]$/g, '');
+  const pc = planCheck(r);
+  if(short){
+    return `- ${dt}${r.time ? ' ' + r.time : ''} · ${r.workout} · ${mmTxt(r.duration_min)} · ${fmtKm(r.distance_km)}` +
+      (r.run_km != null ? ` (run ${fmtKm(r.run_km)} / walk ${fmtKm(r.walk_km)})` : '') +
+      (r.avg_hr !== '' ? ` · HR ${r.avg_hr}/${r.max_hr}` : '') + (r.z4plus_min !== '' ? ` · Z4+ ${mmTxt(r.z4plus_min)}` : '') +
+      (r.recovery_hr !== '' ? ` · 1-min ${r.recovery_hr}` : '') + (cond ? ` · ${cond}` : '') +
+      (pc ? ` · plan check: ${pc.worst === 'ok' ? 'clean pass' : pc.worst === 'warn' ? 'amber' : 'over the line'}` : '') + (rest ? ` · "${rest}"` : '');
+  }
+  L.push(`Treadmill session: ${dt}${r.time ? ', ' + r.time : ''}`);
+  L.push(`Workout: ${r.workout}${r.source === 'manual' ? ' (added manually)' : r.source === 'import' ? ' (imported)' : ''}`);
+  L.push(`Duration ${mmTxt(r.duration_min)} · Distance ${fmtKm(r.distance_km)} (console) · Avg pace ${pace} · Avg ${r.avg_speed || '–'} km/h` + (r.kcal !== '' ? ` · ${r.kcal} kcal` : ''));
+  if(r.run_km != null) L.push(`Running ${mmTxt(r.run_min)} / ${fmtKm(r.run_km)}${r.run_speed !== '' ? ' @ ' + r.run_speed + ' km/h' : ''} · Walking ${mmTxt(Math.max(0, r.duration_min - (+r.run_min || 0)))} / ${fmtKm(r.walk_km)}`);
+  if(r.steps && r.steps.length){
+    L.push('Steps:');
+    r.steps.forEach(x => L.push(`  - ${x.m === 'run' ? 'Run' : 'Walk'}: ${x.l} · ${mmTxt(x.t / 60)} · ${fmtKm(x.d)} · ${x.t ? (x.d / (x.t / 3600)).toFixed(1) : '–'} km/h`));
+  }
+  if(r.avg_hr !== '') L.push(`Heart rate${r.hr_source === 'watch' ? ' (Apple Watch)' : ''}: avg ${r.avg_hr} · max ${r.max_hr || '–'}` +
+    (r.end_hr !== '' ? ` · at end ${r.end_hr}` : '') + (r.recovery_hr !== '' ? ` · 1 min after ${r.recovery_hr}` : ''));
+  else L.push('Heart rate: not recorded');
+  if(r.z1_min !== ''){
+    const share = r.run_min ? Math.round(((+r.z3_min || 0) + (+r.z4plus_min || 0)) / r.run_min * 100) : null;
+    L.push(`Zones: Z1 ${mmTxt(r.z1_min)} · Z2 ${mmTxt(r.z2_min)} · Z3 ${mmTxt(r.z3_min)} · Z4+ ${mmTxt(r.z4plus_min)}` + (share != null ? ` (Zone 3+4 = ${Math.min(share, 100)}% of run time)` : ''));
+  }
+  if(cond) L.push(`Conditions: ${cond}`);
+  if(r.stepdowns) L.push(`HR-guard step-downs: ${r.stepdowns}`);
+  if(pc) L.push(`App plan check: ${pc.verdict.replace(/^[✓⚠✕]\s*/, '')} (${pc.items.map(i => i.txt).join('; ')})`);
+  if(rest) L.push(`Notes: ${rest}`);
+  return L.join('\n');
+}
+function sessionText(r){ return sessionLines(r, false) + '\n\nPlease review this session against my running plan and suggest the next session.'; }
+function periodText(){
+  const rows = load('pt_history', []).map(normSession);
+  const [a, b] = periodRange(repPeriod);
+  const len = Math.round((b - a) / DAY) + 1;
+  const pa = new Date(a.getTime() - len * DAY), pb = new Date(a.getTime() - DAY);
+  const cur = sortSessions(inRange(rows, a, b).slice()).reverse(), prev = inRange(rows, pa, pb);
+  const S1 = stats(cur), S0 = stats(prev);
+  const fd = d => d.toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
+  const name = (document.querySelector('#repPeriods button.on') || {}).textContent || '';
+  const L = [`Treadmill report: ${fd(a)} – ${fd(b)} (${name}), compared with the previous ${len} days`];
+  const cmp = (x, y, f) => repPeriod === 'all' ? f(x) : `${f(x)} (prev ${f(y)})`;
+  L.push(`Sessions ${cmp(S1.n, S0.n, v => v)} · Active ${cmp(S1.min, S0.min, v => Math.round(v) + ' min')} · Distance ${cmp(S1.km, S0.km, v => v.toFixed(1) + ' km')}`);
+  L.push(`Run ${S1.runKm.toFixed(1)} km · Walk ${S1.walkKm.toFixed(1)} km` + (S1.unsplitKm > 0.05 ? ` · not split ${S1.unsplitKm.toFixed(1)} km` : ''));
+  if(S1.avgHr) L.push(`Avg HR ${Math.round(S1.avgHr)}` + (S0.avgHr && repPeriod !== 'all' ? ` (prev ${Math.round(S0.avgHr)})` : '') +
+    (S1.zKnown ? ` · Zone 4+ ${mmTxt(S1.z[3])} · Zones Z1 ${mmTxt(S1.z[0])} / Z2 ${mmTxt(S1.z[1])} / Z3 ${mmTxt(S1.z[2])}` : '') +
+    (S1.share != null ? ` · Zone 3+4 = ${Math.round(S1.share)}% of run time` : ''));
+  L.push('', 'Sessions:');
+  cur.forEach(r => L.push(sessionLines(r, true)));
+  if(!cur.length) L.push('- none');
+  L.push('', 'Please review this period against my running plan and suggest next steps.');
+  return L.join('\n');
+}
+async function copyForClaude(text){
+  let ok = false;
+  try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); ok = true; } }catch(e){}
+  if(!ok){
+    try{ const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length); ok = document.execCommand('copy'); ta.remove(); }catch(e){}
+  }
+  if(ok) showBanner('📋 Copied. Paste it into your chat with Claude.');
+  else showCopyBox(text);
+}
+async function shareText(text){ try{ await navigator.share({text}); }catch(e){ if(e && e.name !== 'AbortError') copyForClaude(text); } }
+function showCopyBox(text){                            // last resort: show the text so it can be selected by hand
+  const o = document.createElement('div'); o.className = 'overlay'; o.style.zIndex = 80;
+  o.innerHTML = `<div class="sheet"><div class="h3">Copy this text</div><div class="small">Press and hold → Select All → Copy.</div>
+    <textarea style="min-height:50vh;font-size:12px" readonly>${esc(text)}</textarea><button class="primary" style="width:100%;margin-top:8px">Close</button></div>`;
+  document.body.appendChild(o); o.querySelector('button').onclick = () => o.remove();
 }
 
 // ---------- Fitness reports ----------
@@ -2058,6 +2155,8 @@ function init(){
   $('btnPauseBelt').onclick = pauseBelt;
 
   initEditor();
+  $('repCopy').onclick = () => copyForClaude(periodText());
+  if(navigator.share){ $('repShare').style.display = ''; $('repShare').onclick = () => shareText(periodText()); }
   initVoiceUi();
   $('btnAddSession').onclick = newManualSession;
   const syncMode = () => document.querySelectorAll('#manualMode button').forEach(x => x.classList.toggle('on', x.dataset.m === (S.manualMode || 'auto')));
@@ -2112,7 +2211,7 @@ window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault();
 init();
 
 // Expose for testing
-window.__pt = {planCheck, openSummary, flattenSteps, openEditor, renderHome, Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
+window.__pt = {sessionText, periodText, planCheck, openSummary, flattenSteps, openEditor, renderHome, Sync, renderReports, normSession, parseTreadmillData, parseCustom, st, W, BUILTIN, demo, doResume, checkLive, get pending(){return pendingSnap}, set pending(v){pendingSnap=v}};
 </script>
 </body>
 </html>
