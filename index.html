@@ -146,6 +146,18 @@
   .sgrid label{margin:2px 0}
   .ib{padding:8px 10px;background:var(--card2)}
   .wk .acts{display:flex;gap:6px;flex-wrap:nowrap}
+  .ringwrap{position:relative;width:min(78vw,300px);margin:6px auto 2px}
+  .ringwrap svg{width:100%;height:auto;display:block}
+  .ringwrap circle{fill:none}
+  .ring-track{stroke:var(--card2)}
+  .ring-step{stroke-linecap:round;transition:stroke-dashoffset .9s linear,stroke .3s}
+  .ring-total{stroke:var(--muted);opacity:.55;stroke-linecap:round;transition:stroke-dashoffset .9s linear}
+  .ring-step.run{stroke:var(--accent)}.ring-step.walk{stroke:var(--accent2)}.ring-step.soon{stroke:var(--warn)}
+  .ringc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+  .ringc .lbl{font-size:15px;font-weight:700}
+  .ringc .left{font-size:clamp(40px,13vw,58px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.05;letter-spacing:-1px}
+  .ringc .sub{font-size:12px;color:var(--muted)}
+  .ringc .spd{font-size:14px;font-weight:700;margin-top:4px}
   .stbl td,.stbl th{padding:8px 4px;vertical-align:top}.stbl tr:active{background:var(--card2)}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;display:flex;align-items:flex-end;justify-content:center}
   .sheet{background:var(--bg);width:100%;max-width:720px;max-height:94vh;overflow:auto;border-radius:22px 22px 0 0;padding:16px 12px calc(env(safe-area-inset-bottom) + 18px);-webkit-overflow-scrolling:touch}
@@ -236,6 +248,38 @@
     <button id="btnHr" class="ghost">❤️ HR</button>
     <button id="btnDemo" class="ghost">Demo</button>
   </div>
+<!-- WORKOUT PROGRESS -->
+<div class="card" id="wkCard" style="display:none">
+  <div class="small" id="wkName"></div>
+  <div class="ringwrap">
+    <svg viewBox="0 0 260 260" aria-hidden="true">
+      <g transform="rotate(-90 130 130)">
+        <circle class="ring-track" cx="130" cy="130" r="122" stroke-width="5"/>
+        <circle class="ring-total" id="ringTotal" cx="130" cy="130" r="122" stroke-width="5"/>
+        <circle class="ring-track" cx="130" cy="130" r="104" stroke-width="18"/>
+        <circle class="ring-step run" id="ringStep" cx="130" cy="130" r="104" stroke-width="18"/>
+      </g>
+    </svg>
+    <div class="ringc">
+      <div class="lbl" id="ringLabel"></div>
+      <div class="left" id="ringLeft">--:--</div>
+      <div class="sub" id="ringOf"></div>
+      <div class="spd" id="ringSpeed"></div>
+    </div>
+  </div>
+  <div class="step-now" id="stepNow" style="text-align:center;font-size:15px"></div>
+  <div class="row" style="justify-content:space-between">
+    <span class="small" id="stepLeft"></span><span class="small" id="wkLeft"></span>
+  </div>
+  <div class="step-next" id="stepNext"></div>
+  <div class="steps" id="stepsViz"></div>
+  <div class="row" style="margin-top:10px">
+    <button class="ghost grow" id="btnSkip">Skip step ⏭</button>
+    <button class="ghost grow" id="btnEndWk">End workout</button>
+  </div>
+  <div class="note">📱 Keep this screen open: iPhone pauses web apps while you use other apps, so speed changes can't be sent then. If you do switch away, the app catches up when you return.</div>
+</div>
+
 <!-- LIVE METRICS -->
 <div class="card">
   <div class="metrics">
@@ -250,22 +294,6 @@
   <div class="zonebar" id="zoneBar"></div>
 </div>
 
-<!-- WORKOUT PROGRESS -->
-<div class="card" id="wkCard" style="display:none">
-  <div class="small" id="wkName"></div>
-  <div class="step-now" id="stepNow"></div>
-  <div class="prog"><div id="stepProg"></div></div>
-  <div class="row" style="justify-content:space-between">
-    <span class="small" id="stepLeft"></span><span class="small" id="wkLeft"></span>
-  </div>
-  <div class="step-next" id="stepNext"></div>
-  <div class="steps" id="stepsViz"></div>
-  <div class="row" style="margin-top:10px">
-    <button class="ghost grow" id="btnSkip">Skip step ⏭</button>
-    <button class="ghost grow" id="btnEndWk">End workout</button>
-  </div>
-  <div class="note">📱 Keep this screen open: iPhone pauses web apps while you use other apps, so speed changes can't be sent then. If you do switch away, the app catches up when you return.</div>
-</div>
 
 
   <div class="card">
@@ -342,6 +370,17 @@
     <div class="toggle"><span>Voice announcements</span><input type="checkbox" id="sVoice"></div>
   </div>
   <div class="card">
+    <h3 style="margin:0">Voice</h3>
+    <label>Coach voice</label>
+    <select id="sVoicePick"><option value="">Default</option></select>
+    <label>Speed <span class="small" id="sRateV"></span></label>
+    <input type="range" id="sRate" min="0.7" max="1.3" step="0.05" style="padding:0">
+    <label>Pitch <span class="small" id="sPitchV"></span></label>
+    <input type="range" id="sPitch" min="0.7" max="1.3" step="0.05" style="padding:0">
+    <button class="ghost" id="btnVoiceTest" style="width:100%;margin-top:10px">🔊 Test voice</button>
+    <div class="note">For a much more natural voice, download one on your iPhone: <b>Settings → Accessibility → Spoken Content → Voices → English</b> → pick a voice marked <b>Enhanced</b> or <b>Premium</b> (e.g. an English (India) voice) and tap download. Then reopen Bluefy and choose it here. Siri voices can't be used by web apps.</div>
+  </div>
+  <div class="card">
     <h3 style="margin:0">Weekly plan</h3>
     <div class="small">What Home suggests for each day. Change it when your plan changes.</div>
     <div id="planEditor"></div>
@@ -366,6 +405,7 @@
       <h3 style="margin:0">Bluetooth log</h3><button class="ghost" id="btnCopyLog">Copy</button>
     </div>
     <div class="small">If something doesn't work, copy this log and send it to Claude.</div>
+    <div class="small" style="margin-top:6px">App version: <b id="appVersion"></b></div>
     <button class="ghost" id="btnScanAll" style="margin-top:8px;width:100%">Troubleshoot: scan ALL Bluetooth devices</button>
     <div id="log"></div>
   </div>
@@ -424,7 +464,8 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const DEFAULTS = {manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
+const APP_VERSION = '2026-11-24b (progress ring)';
+const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -661,7 +702,7 @@ async function startWorkout(wk){
   if(W.active && !confirm('A workout is already running. Replace it?')) return;
   if(wk.locked && !confirm('This one is Phase 3 and not unlocked in your plan yet (earliest early December). Start anyway?')) return;
   unlockAudio(); keepAwake(true);
-  Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, stepSec:0, warned:false, override:null, guardSec:0, stepdowns:0, done:false});
+  Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, stepSec:0, stepDist:0, stepLog:[], warned:false, override:null, guardSec:0, stepdowns:0, done:false});
   clearLive();
   resetSession();
   W.stepStartDist = curDist();
@@ -738,8 +779,13 @@ function isRunningNow(){
 }
 function currentStepSpeed(){ return W.override != null ? W.override : W.steps[W.idx].speed; }
 
+function logStep(){                                 // record time + distance of the step just finished (or ended early)
+  const s = W.steps[W.idx]; if(!s || W.stepSec < 1) return;
+  (W.stepLog = W.stepLog || []).push({l: s.label, m: s.mode, s: s.speed, t: Math.round(W.stepSec), d: +(W.stepDist || 0).toFixed(3)});
+}
 function advanceStep(){
-  W.idx++; W.stepSec = 0; W.warned = false; W.override = null; W.guardSec = 0;
+  logStep();
+  W.idx++; W.stepSec = 0; W.stepDist = 0; W.warned = false; W.override = null; W.guardSec = 0;
   W.stepStartDist = curDist();
   if(W.idx >= W.steps.length){ finishWorkout(); return; }
   const s = W.steps[W.idx];
@@ -751,6 +797,7 @@ function skipStep(){ if(W.active && !W.done) advanceStep(); }
 
 function finishWorkout(manual){
   if(!W.active) return;
+  if(W.idx < W.steps.length) logStep();             // ended early: keep the partial step
   W.done = true; W.active = false;
   speak(manual ? 'Workout ended' : 'Workout complete. Well done.');
   if(S.autoStop || manual) stopBelt();
@@ -776,7 +823,7 @@ function sessionDistKm(){
 function buildSession(name){
   const mins = x => +(x/60).toFixed(2);
   const hasHr = st.hrN > 0;
-  return {
+  const rec = {
     id: newId('s'),
     date: localDate(st.sessionStartAt),
     time: st.sessionStartAt.toTimeString().slice(0,5), started_at: st.sessionStartAt.toISOString(),
@@ -793,7 +840,20 @@ function buildSession(name){
     z3_min: hasHr ? mins(st.zoneSec[2]) : '', z4plus_min: hasHr ? mins(st.zoneSec[3] + st.zoneSec[4]) : '',
     kcal: sessionKcal() ?? '',
     stepdowns: W.stepdowns || 0, notes: '',
+    steps_json: '',
   };
+  const log = (W.stepLog || []).slice();
+  if(log.length){
+    // scale step distances so they add up to the treadmill's own distance
+    const sum = log.reduce((a, x) => a + x.d, 0), total = rec.distance_km;
+    const k = sum > 0.05 && total > 0 ? total / sum : 1;
+    log.forEach(x => x.d = +(x.d * k).toFixed(3));
+    rec.steps_json = JSON.stringify(log);
+    const runT = log.filter(x => x.m === 'run').reduce((a, x) => a + x.t, 0), runD = log.filter(x => x.m === 'run').reduce((a, x) => a + x.d, 0);
+    rec.run_min = +(runT / 60).toFixed(2);
+    rec.run_speed = runT > 30 ? +(runD / (runT / 3600)).toFixed(1) : '';
+  }
+  return rec;
 }
 // Called when a workout ends (finished / End workout / STOP): show the summary to review, adjust and save.
 function endSession(name){
@@ -880,6 +940,7 @@ function openSummary(rec, editing){
     ${missing.length ? `<div class="banner show" style="margin:6px 0">Missing: ${missing.join(', ')}. Fill in what you have (e.g. from the Apple Watch workout); everything is optional.</div>` : ''}
     <div class="metrics" id="sumHero" style="margin:10px 0"></div>
     <div class="card" id="sumCheck" style="display:none"></div>
+    <div class="card" id="sumSteps"></div>
     <div class="card"><div class="h3">Session</div>
       <label>Name</label><input data-k="workout" type="text" list="sessNames" placeholder="e.g. Outdoor run" value="${esc(r.workout)}">
       <datalist id="sessNames">${['Outdoor run','Outdoor walk','Treadmill run','Treadmill walk','Zone 2 — 30 min','Incline walk', ...allWorkouts().map(w => w.name)].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
@@ -933,6 +994,42 @@ function openSummary(rec, editing){
   };
   sumDerived();
 }
+// Steps actually done (time + distance per step); for older sessions, an estimate from the workout plan
+function planSteps(r){
+  const w = allWorkouts().find(x => x.name === r.workout); if(!w) return null;
+  const fl = flattenSteps(w.steps);
+  const planSec = fl.reduce((a, x) => a + (x.kind === 'dist' ? x.value / (x.speed/3.6) : x.value), 0);
+  const dur = (+r.duration_min || 0) * 60;
+  if(!dur || Math.abs(planSec - dur) > Math.max(60, planSec * 0.1)) return null;   // only if it was clearly completed as planned
+  const st_ = fl.map(x => { const t = x.kind === 'dist' ? x.value / (x.speed/3.6) : x.value; return {l: x.label, m: x.mode, s: x.speed, t: Math.round(t), d: x.speed * t / 3600}; });
+  const sum = st_.reduce((a, x) => a + x.d, 0), k = (+r.distance_km > 0 && sum > 0) ? (+r.distance_km) / sum : 1;
+  st_.forEach(x => x.d = +(x.d * k).toFixed(3));
+  return st_;
+}
+function renderSumSteps(){
+  const box = $('sumSteps'); if(!box) return;
+  const r = SUM.rec; let steps = null, est = false;
+  try{ if(r.steps_json) steps = JSON.parse(r.steps_json); }catch(e){}
+  if(!steps || !steps.length){ steps = planSteps(r); est = !!steps; }
+  if(!steps){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  const dist = d => d >= 1 ? d.toFixed(2) + ' km' : Math.round(d * 1000) + ' m';
+  const run = steps.filter(x => x.m === 'run'), runT = run.reduce((a, x) => a + x.t, 0);
+  box.innerHTML = `<div class="h3">Steps</div>
+    <table class="stbl"><tr><th>Step</th><th>Time</th><th>Distance</th><th>Avg</th></tr>` +
+    steps.map(x => `<tr><td>${x.m === 'run' ? '🏃' : '🚶'} ${esc(x.l)}</td><td>${mmTxt(x.t/60)}</td><td>${dist(x.d)}</td><td>${x.t ? (x.d / (x.t/3600)).toFixed(1) : '–'} km/h</td></tr>`).join('') +
+    `</table>` + (est ? `<div class="note">Estimated from the "${esc(r.workout)}" plan (this session was saved before steps were recorded).</div>
+      ${Math.abs((+r.run_min || 0) * 60 - runT) > 30 ? `<button class="blue" id="sumUsePlan" style="width:100%;margin-top:8px">Use these steps (fixes run ${mmTxt(runT/60)} / walk split)</button>` : ''}` : '');
+  const b = $('sumUsePlan');
+  if(b) b.onclick = () => {
+    SUM.rec.steps_json = JSON.stringify(steps);
+    const rd = run.reduce((a, x) => a + x.d, 0);
+    SUM.rec.run_min = +(runT / 60).toFixed(2); SUM.rec.run_speed = runT ? +(rd / (runT/3600)).toFixed(1) : '';
+    SUM.touched.add('steps');
+    const el = $('sumSheet').querySelector('[data-k="run_min"]'); if(el) el.value = minToMmss(SUM.rec.run_min);
+    sumDerived(); showBanner('Steps applied: tap Save changes to keep them.');
+  };
+}
 function setSumField(k, v){ if(!SUM) return; SUM.rec[k] = v; const el = $('sumSheet').querySelector(`[data-k="${k}"]`); if(el) el.value = ['duration_min','run_min','z1_min','z2_min','z3_min','z4plus_min'].includes(k) ? minToMmss(v) : v; sumDerived(); }
 function sumDerived(){
   const r = SUM.rec, c = SUM.cond;
@@ -947,6 +1044,7 @@ function sumDerived(){
     tile(n.run_km != null ? n.run_km.toFixed(2) : '–', '🏃 run km') + tile(n.walk_km != null ? n.walk_km.toFixed(2) : '–', '🚶 walk km') + tile(r.kcal !== '' ? r.kcal : '–', 'kcal');
   $('sumDew').textContent = c.temp !== '' && c.rh !== '' ? `Dew point ≈ ${Math.round(c.temp - (100 - c.rh)/5)}°C (${c.temp - (100 - c.rh)/5 >= 18 ? 'sticky: expect higher HR' : 'comfortable'})` : '';
   $('sumSheet').querySelectorAll('[data-cseg]').forEach(g => g.querySelectorAll('button').forEach(b => b.classList.toggle('on', SUM.cond[g.dataset.cseg] === b.dataset.v)));
+  renderSumSteps();
   const pc = planCheck(r), box = $('sumCheck');
   if(pc){ box.style.display = 'block';
     box.innerHTML = `<div class="h3">Plan check</div><div class="verdict ${pc.worst}">${pc.verdict}</div>` +
@@ -956,13 +1054,16 @@ function sumDerived(){
 }
 function commitSummary(){
   const r = SUM.rec, c = SUM.cond;
+  if(r.steps_json && SUM.touched.has('distance_km') && +r.distance_km > 0){
+    try{ const a = JSON.parse(r.steps_json), sm = a.reduce((x, y) => x + y.d, 0); if(sm > 0){ a.forEach(x => x.d = +(x.d * (+r.distance_km) / sm).toFixed(3)); r.steps_json = JSON.stringify(a); } }catch(e){}
+  }
   if(!String(r.workout).trim()){ showBanner('Give the session a name.'); return null; }
   if(!r.date){ showBanner('Pick a date.'); return null; }
   if(r.time && (SUM.touched.has('date') || SUM.touched.has('time') || !r.started_at)){ const d = new Date(`${r.date}T${r.time}:00`); if(!isNaN(d)) r.started_at = d.toISOString(); }
   if(r.run_min !== '' && r.duration_min !== '' && +r.run_min > +r.duration_min) r.run_min = r.duration_min;
   const dist = +r.distance_km || 0, dur = +r.duration_min || 0, rm = r.run_min === '' ? null : +r.run_min;
   if(rm === 0) r.run_speed = '';
-  else if(rm != null && dur && dist && (SUM.touched.has('run_min') || SUM.touched.has('distance_km') || SUM.touched.has('duration_min') || r.run_speed === '')){
+  else if(!r.steps_json && rm != null && dur && dist && (SUM.touched.has('run_min') || SUM.touched.has('distance_km') || SUM.touched.has('duration_min') || r.run_speed === '')){
     if(rm >= dur - 0.05) r.run_speed = +(dist / (dur/60)).toFixed(1);                           // all running
     else { const runKm = Math.max(0, dist - 4.0 * (dur - rm) / 60); r.run_speed = rm ? +(runKm / (rm/60)).toFixed(1) : ''; }   // walk parts assumed ~4 km/h
   }
@@ -1021,8 +1122,16 @@ function normSession(r){
   for(const k of NUM_FIELDS){ const v = o[k]; o[k] = (v === '' || v == null || isNaN(+v)) ? '' : +v; }
   o.date = String(o.date || '').slice(0,10); o.time = String(o.time || ''); o.started_at = o.started_at ? String(o.started_at) : ''; o.hr_source = o.hr_source || '';
   o.workout = String(o.workout || ''); o.source = o.source || 'app'; o.notes = o.notes || '';
-  // run vs walk split (derived; not stored in the Sheet)
+  // per-step breakdown (steps_json) and run vs walk split
+  o.steps = null;
+  if(o.steps_json){ try{ const a = typeof o.steps_json === 'string' ? JSON.parse(o.steps_json) : o.steps_json; if(Array.isArray(a) && a.length) o.steps = a; }catch(e){} }
+  o.steps_json = o.steps ? JSON.stringify(o.steps) : '';
   o.run_km = o.walk_km = null;
+  if(o.steps){
+    o.run_km = +o.steps.filter(x => x.m === 'run').reduce((a, x) => a + (+x.d || 0), 0).toFixed(2);
+    o.walk_km = +o.steps.filter(x => x.m !== 'run').reduce((a, x) => a + (+x.d || 0), 0).toFixed(2);
+    return o;
+  }
   if(o.distance_km !== '' && o.run_min !== ''){
     if(o.run_min <= 0.5){ o.run_km = 0; o.walk_km = o.distance_km; }
     else if(o.duration_min !== '' && o.run_min >= o.duration_min - 0.05){ o.run_km = o.distance_km; o.walk_km = 0; }
@@ -1115,7 +1224,8 @@ function catchUp(gap, paused = true){
       if(step.kind === 'dist') break;              // distance steps follow the treadmill's own distance counter
       const use = Math.min(left, step.value - W.stepSec);
       accountGap(use, step.mode === 'run'); W.stepSec += use; left -= use;
-      if(W.stepSec >= step.value - 0.01){ W.idx++; W.stepSec = 0; W.warned = false; W.override = null; W.guardSec = 0; W.stepStartDist = curDist(); }
+      if(st.speed > 0.3) W.stepDist = (W.stepDist || 0) + st.speed / 3.6 * use;
+      if(W.stepSec >= step.value - 0.01){ logStep(); W.idx++; W.stepSec = 0; W.stepDist = 0; W.warned = false; W.override = null; W.guardSec = 0; W.stepStartDist = curDist(); }
     }
   }
   if(left > 0.5) accountGap(left, isRunningNow());
@@ -1153,7 +1263,7 @@ function saveLive(){
   save('pt_live', {
     savedAt: Date.now(),
     wk: W.active ? {name: W.wk.name, steps: W.steps} : null,
-    idx: W.idx, stepSec: W.stepSec, stepStartDist: W.stepStartDist, override: W.override, stepdowns: W.stepdowns,
+    idx: W.idx, stepSec: W.stepSec, stepStartDist: W.stepStartDist, override: W.override, stepdowns: W.stepdowns, stepDist: W.stepDist || 0, stepLog: W.stepLog || [],
     beltSec: st.beltSec, ownDist: st.ownDist, runSec: st.runSec, runDist: st.runDist, zoneSec: st.zoneSec, hrSum: st.hrSum, hrN: st.hrN, hrMax: st.hrMax,
     sessionStartAt: st.sessionStartAt, distAtStart: st.distAtStart, kcalAtStart: st.kcalAtStart,
     tmDist: st.distance, tmKcal: st.kcal, tmElapsed: st.elapsed,
@@ -1178,7 +1288,7 @@ function doResume(){
   else if(st.speed > 0.3) gap = (Date.now() - snap.savedAt) / 1000;
   gap = Math.max(0, Math.min(gap, LIVE_MAX_AGE / 1000));
   Object.assign(st, {
-    beltSec: snap.beltSec + gap, ownDist: snap.ownDist, runSec: snap.runSec || 0, runDist: snap.runDist || 0, zoneSec: snap.zoneSec, hrSum: snap.hrSum, hrN: snap.hrN, hrMax: snap.hrMax,
+    beltSec: snap.beltSec, ownDist: snap.ownDist, runSec: snap.runSec || 0, runDist: snap.runDist || 0, zoneSec: snap.zoneSec, hrSum: snap.hrSum, hrN: snap.hrN, hrMax: snap.hrMax,
     sessionStarted: true, sessionStartAt: new Date(snap.sessionStartAt),
     distAtStart: snap.distAtStart, kcalAtStart: snap.kcalAtStart, lastTick: Date.now(), elOffset: null, lastEl: null,
   });
@@ -1188,17 +1298,19 @@ function doResume(){
       st.distAtStart = (snap.distAtStart ?? 0) - snap.tmDist;
       stepStartDist = stepStartDist - snap.tmDist;
     }
-  } else { st.ownDist += st.speed / 3.6 * gap; }
+  }
   if(st.kcal != null && snap.tmKcal != null && st.kcal < snap.tmKcal) st.kcalAtStart = (snap.kcalAtStart ?? 0) - snap.tmKcal;
   if(snap.wk){
     Object.assign(W, {active:true, done:false, wk:{name:snap.wk.name, steps:snap.wk.steps}, steps:snap.wk.steps, idx:snap.idx,
-      stepSec: snap.stepSec + gap, stepStartDist, override: snap.override, stepdowns: snap.stepdowns, warned:false, guardSec:0});
+      stepSec: snap.stepSec, stepStartDist, override: snap.override, stepdowns: snap.stepdowns, warned:false, guardSec:0,
+      stepDist: snap.stepDist || 0, stepLog: snap.stepLog || []});
     $('wkCard').style.display = 'block';
     keepAwake(true);
     renderWorkout();
     showTab('run');
     speak('Workout resumed');
   } else { speak('Session resumed'); }
+  if(gap > 1) catchUp(gap, false);                   // counts the missed time step by step (running vs walking)
   log('Resumed session; gap', Math.round(gap) + 's');
 }
 
@@ -1222,6 +1334,7 @@ function tick(){
   else {
     if(d > 0){
       st.beltSec += d; st.ownDist += st.speed / 3.6 * d;
+      if(W.active) W.stepDist = (W.stepDist || 0) + st.speed / 3.6 * d;
       if(isRunningNow()){ st.runSec += d; st.runDist += st.speed / 3.6 * d; }
       if(st.hr){ const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += d; }
     }
@@ -1259,8 +1372,22 @@ function renderWorkout(){
   const p = stepProgress(step);
   const sp = currentStepSpeed();
   $('wkName').textContent = W.wk.name + ` · step ${W.idx+1}/${W.steps.length}` + (W.stepdowns ? ` · ${W.stepdowns} step-down(s)` : '');
-  $('stepNow').textContent = `${step.label} · ${sp.toFixed(1)} km/h` + (step.incline ? ` · incline ${step.incline}` : '') + (W.override != null ? ' (stepped down)' : '');
-  $('stepProg').style.width = Math.min(100, p.done / p.total * 100) + '%';
+  $('stepNow').textContent = '';
+  // progress rings: inner = current step, outer = whole workout
+  const C_IN = 2 * Math.PI * 104, C_OUT = 2 * Math.PI * 122;
+  const frac = Math.max(0, Math.min(1, p.done / p.total));
+  const leftSec = stepRemainingSec(step);
+  const rs = $('ringStep');
+  rs.setAttribute('stroke-dasharray', C_IN); rs.setAttribute('stroke-dashoffset', C_IN * (1 - frac));
+  rs.setAttribute('class', 'ring-step ' + (leftSec <= 10 && W.steps[W.idx + 1] ? 'soon' : step.mode === 'walk' ? 'walk' : 'run'));
+  const durOf = s2 => s2.kind === 'dist' ? s2.value / (s2.speed/3.6) : s2.value;
+  const totAll = W.steps.reduce((a, s2) => a + durOf(s2), 0);
+  const doneAll = W.steps.slice(0, W.idx).reduce((a, s2) => a + durOf(s2), 0) + durOf(step) * frac;
+  const rt = $('ringTotal'); rt.setAttribute('stroke-dasharray', C_OUT); rt.setAttribute('stroke-dashoffset', C_OUT * (1 - Math.min(1, doneAll / totAll)));
+  $('ringLabel').textContent = `${step.mode === 'walk' ? '🚶' : '🏃'} ${step.label}`;
+  $('ringLeft').textContent = step.kind === 'dist' ? ((p.total - p.done) / 1000).toFixed(2) + ' km' : mmss(p.total - p.done);
+  $('ringOf').textContent = step.kind === 'dist' ? `left of ${(p.total/1000).toFixed(2)} km` : `left of ${mmss(p.total)}`;
+  $('ringSpeed').textContent = `${sp.toFixed(1)} km/h` + (step.incline ? ` · incline ${step.incline}` : '') + (W.override != null ? ' · stepped down' : '');
   $('stepLeft').textContent = step.kind === 'dist' ? `${((p.total - p.done)/1000).toFixed(2)} km left in step` : `${mmss(p.total - p.done)} left in step`;
   let wkRem = stepRemainingSec(step);
   for(let i = W.idx + 1; i < W.steps.length; i++){ const s = W.steps[i]; wkRem += s.kind === 'dist' ? s.value / (s.speed/3.6) : s.value; }
@@ -1821,10 +1948,42 @@ function beep(n = 1){
     o.start(t); o.stop(t + 0.2);
   }
 }
-function speak(text){
+function pickVoice(){
+  if(!window.speechSynthesis) return null;
+  const vs = speechSynthesis.getVoices();
+  return (S.voiceURI && vs.find(v => v.voiceURI === S.voiceURI)) || null;
+}
+function speak(text, force){
   log('🔊', text);
-  if(!S.voice || !window.speechSynthesis) return;
-  try{ const u = new SpeechSynthesisUtterance(text); u.lang = 'en-IN'; u.rate = 1.0; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){}
+  if((!S.voice && !force) || !window.speechSynthesis) return;
+  try{
+    const u = new SpeechSynthesisUtterance(text), v = pickVoice();
+    if(v){ u.voice = v; u.lang = v.lang; } else u.lang = 'en-IN';
+    u.rate = +S.voiceRate || 1; u.pitch = +S.voicePitch || 1;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
+}
+function voiceLabel(v){
+  const q = /premium/i.test(v.name + v.voiceURI) ? ' · Premium' : /enhanced/i.test(v.name + v.voiceURI) ? ' · Enhanced' : '';
+  const region = {'en-IN':'India','en-GB':'UK','en-US':'US','en-AU':'Australia','en-IE':'Ireland','en-ZA':'South Africa'}[v.lang.replace('_','-')] || v.lang;
+  return `${v.name.replace(/\s*\((enhanced|premium)\)/i, '')} (${region})${q}`;
+}
+function fillVoices(){
+  const sel = $('sVoicePick'); if(!sel || !window.speechSynthesis) return;
+  const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  const rank = v => (/premium/i.test(v.name + v.voiceURI) ? 0 : /enhanced/i.test(v.name + v.voiceURI) ? 1 : 2) * 10 + (/IN/i.test(v.lang) ? 0 : 1);
+  vs.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">Default</option>' + vs.map(v => `<option value="${esc(v.voiceURI)}"${v.voiceURI === S.voiceURI ? ' selected' : ''}>${esc(voiceLabel(v))}</option>`).join('');
+}
+function initVoiceUi(){
+  fillVoices();
+  if(window.speechSynthesis) speechSynthesis.onvoiceschanged = fillVoices;
+  const upd = () => { $('sRateV').textContent = (+S.voiceRate).toFixed(2) + '×'; $('sPitchV').textContent = (+S.voicePitch).toFixed(2); };
+  $('sRate').value = S.voiceRate; $('sPitch').value = S.voicePitch; upd();
+  $('sVoicePick').onchange = () => { S.voiceURI = $('sVoicePick').value; save('pt_settings', S); speak('Voice selected. Speeding up to 5.8 in 10 seconds.', true); };
+  $('sRate').oninput = () => { S.voiceRate = +$('sRate').value; upd(); save('pt_settings', S); };
+  $('sPitch').oninput = () => { S.voicePitch = +$('sPitch').value; upd(); save('pt_settings', S); };
+  $('btnVoiceTest').onclick = () => { unlockAudio(); speak('Warm-up done. Speeding up to 5.8 in 10 seconds. Keep it smooth and relaxed.', true); };
 }
 let wakeLock = null;
 async function requestWakeLock(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
@@ -1899,6 +2058,7 @@ function init(){
   $('btnPauseBelt').onclick = pauseBelt;
 
   initEditor();
+  initVoiceUi();
   $('btnAddSession').onclick = newManualSession;
   const syncMode = () => document.querySelectorAll('#manualMode button').forEach(x => x.classList.toggle('on', x.dataset.m === (S.manualMode || 'auto')));
   document.querySelectorAll('#manualMode button').forEach(b => b.onclick = () => { S.manualMode = b.dataset.m; save('pt_settings', S); syncMode(); });
@@ -1944,6 +2104,8 @@ function init(){
   window.addEventListener('online', () => Sync.flush());
   setInterval(tick, 1000);
   log('UA: ' + navigator.userAgent.slice(0,120));
+  log('App version ' + APP_VERSION);
+  $('appVersion').textContent = APP_VERSION;
   log('Ready. Bluetooth ' + (navigator.bluetooth ? 'available' : 'NOT available') + ' in this browser.');
 }
 window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault(); e.returnValue = ''; } });
