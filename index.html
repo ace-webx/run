@@ -465,7 +465,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const APP_VERSION = '2026-11-25a (exact HR window)';
+const APP_VERSION = '2026-11-25b (HR day window)';
 const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
@@ -1098,14 +1098,15 @@ async function getWatchHr(){
   if(Sync.queue().length){ if(btn){ btn.disabled = false; btn.textContent = '❤️ Get HR from Apple Watch'; } return showBanner('Could not save the session to your Sheet (check internet), so the shortcut has nothing to update yet. Try again.'); }
   const start = r.started_at ? new Date(r.started_at) : new Date(`${r.date}T${r.time}:00`);
   // Shortcuts' "Start Date is in the last N days" filter: 1 = today's session, 2 = yesterday's, etc.
-  // exact window for the Shortcut's "Start Date is between" filter: 1 min before start → 2 min after end (covers 1-min recovery)
+  // window for the Shortcut's "Start Date is between" filter. Its date boxes only keep the DAY, so send midnight of the
+  // session day → midnight of the next day; the Sheet script then keeps only readings inside the exact session time.
   const hrStamp = ms => { const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
   const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.max(1, Math.round((dayStart(new Date()) - dayStart(start)) / 86400000) + 1);
   save('pt_awaitHr', {id: r.id, at: Date.now()});
   closeSummary();
   showBanner('Opening the "Treadmill HR" shortcut… When it shows the result, come back here.');
-  (window.__openUrl || (u => { location.href = u; }))('shortcuts://run-shortcut?name=' + encodeURIComponent('Treadmill HR') + '&input=text&text=' + encodeURIComponent([r.id, hrStamp(start.getTime() - 60000), hrStamp(start.getTime() + (+r.duration_min) * 60000 + 120000), days].join('|')));
+  (window.__openUrl || (u => { location.href = u; }))('shortcuts://run-shortcut?name=' + encodeURIComponent('Treadmill HR') + '&input=text&text=' + encodeURIComponent([r.id, hrStamp(dayStart(start)), hrStamp(dayStart(new Date(start.getTime() + (+r.duration_min) * 60000 + 120000)) + 86400000), days].join('|')));
 }
 function checkAwaitHr(sessions){
   const w = load('pt_awaitHr', null); if(!w) return;
