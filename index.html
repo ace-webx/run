@@ -332,6 +332,9 @@
     <div class="row" id="repCustom" style="display:none;margin-top:8px;flex-wrap:nowrap">
       <input type="date" id="repFrom"><input type="date" id="repTo">
     </div>
+    <div class="seg" id="repKind" style="margin-top:8px">
+      <button data-k="all" class="on">All sessions</button><button data-k="run">🏃 Runs only</button><button data-k="walk">🚶 Walks only</button>
+    </div>
     <div class="small" id="repRange" style="margin-top:8px"></div>
     <div class="row" style="margin-top:8px"><button class="ghost grow" id="repCopy">📋 Copy this period for Claude</button><button class="ghost" id="repShare" style="display:none">Share…</button></div>
   </div>
@@ -344,6 +347,12 @@
     <div id="trendLegend" class="legend"></div><div id="chTrend"></div>
     <div class="note">Average HR covers the whole session, including warm-up and cool-down, so only compare sessions with the same structure.</div></div>
   <div class="card"><div class="h3">Recovery: HR 1 minute after the workout</div><div class="small">Lower = faster recovery. 5K benchmarks left out (no cool-down, so not comparable).</div><div id="chRecovery"></div></div>
+  <div class="card" id="cmpCard"><div class="h3">Compare the same workout</div>
+    <div class="small">Every time you did one workout, newest first, with the change from the time before. Covers all dates (not just this period).</div>
+    <select id="cmpPick" style="margin-top:8px"></select>
+    <div id="cmpSummary" class="small" style="margin-top:8px"></div>
+    <div id="cmpLegend" class="legend"></div><div id="cmpChart"></div>
+    <div id="cmpTable" style="overflow-x:auto;margin-top:6px"></div></div>
   <div class="card"><div class="row" style="justify-content:space-between;align-items:center"><div class="h3" style="margin:0">Sessions in this period</div><button class="blue" id="btnAddSession" style="padding:8px 12px">＋ Add session</button></div>
     <div class="small" style="margin:4px 0 6px">Tap a session (or ✎ Edit) to add or change heart rate, zones, weather, time and notes. Use ＋ Add session for runs done without the app (outdoor runs, gym).</div>
     <div id="repTable" style="overflow-x:auto"></div></div>
@@ -465,7 +474,7 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const APP_VERSION = '2026-11-25b (HR day window)';
+const APP_VERSION = '2026-11-25c (meal fuel · run/walk filter · compare)';
 const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
@@ -885,7 +894,7 @@ function saveRecord(rec){
 
 // ---------- Post-workout summary (review / adjust / save) ----------
 let SUM = null, SUMT = null;
-const FUEL = ['Fasted','Banana / dates','Meal 3h+ ago','Meal under 3h ago'];
+const FUEL = ['Fasted','Banana / dates','After breakfast','After lunch','After dinner','Meal 3h+ ago','Meal under 3h ago'];
 const AIR = ['Off','Fan','AC'];
 function mmssToMin(v){ v = String(v).trim(); if(v === '') return ''; if(v.includes(':')){ const [m, x] = v.split(':'); return +(+m + (+x || 0)/60).toFixed(2); } return isNaN(+v) ? '' : +v; }
 function minToMmss(m){ return m === '' || m == null ? '' : mmTxt(m); }
@@ -942,6 +951,7 @@ function openSummary(rec, editing){
     ${missing.length ? `<div class="banner show" style="margin:6px 0">Missing: ${missing.join(', ')}. Fill in what you have (e.g. from the Apple Watch workout); everything is optional.</div>` : ''}
     <div class="metrics" id="sumHero" style="margin:10px 0"></div>
     <div class="card" id="sumCheck" style="display:none"></div>
+    <div class="card" id="sumPrev" style="display:none"></div>
     <div class="card" id="sumSteps"></div>
     <div class="card"><div class="h3">Session</div>
       <label>Name</label><input data-k="workout" type="text" list="sessNames" placeholder="e.g. Outdoor run" value="${esc(r.workout)}">
@@ -1040,6 +1050,7 @@ function renderSumSteps(){
 }
 function setSumField(k, v){ if(!SUM) return; SUM.rec[k] = v; const el = $('sumSheet').querySelector(`[data-k="${k}"]`); if(el) el.value = ['duration_min','run_min','z1_min','z2_min','z3_min','z4plus_min'].includes(k) ? minToMmss(v) : v; sumDerived(); }
 function sumDerived(){
+  try{ renderSumPrev(); }catch(e){ log('compare: ' + e.message); }
   const r = SUM.rec, c = SUM.cond;
   const dist = +r.distance_km || 0, dur = +r.duration_min || 0;
   r.avg_speed = dur ? +(dist / (dur/60)).toFixed(2) : '';
@@ -1704,7 +1715,8 @@ function showTab(name){
 function renderHistory(){
   const h = load('pt_history', []);
   if(!h.length){ $('histTable').innerHTML = '<div class="small">No sessions yet. Sessions longer than 1 minute are saved.</div>'; return; }
-  $('histTable').innerHTML = sessionTable(h.map(normSession));
+  const hs = kindFilter(h.map(normSession));
+  $('histTable').innerHTML = hs.length ? sessionTable(hs) : '<div class="small">No ' + (S.repKind === 'run' ? 'runs' : 'walks') + ' yet.</div>';
   bindSessionTable($('histTable'));
 }
 function mmTxt(m){ if(m === '' || m == null) return ''; const s = Math.round(m*60); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
@@ -1789,7 +1801,7 @@ function sessionLines(r0, short){
 }
 function sessionText(r){ return sessionLines(r, false) + '\n\nPlease review this session against my running plan and suggest the next session.'; }
 function periodText(){
-  const rows = load('pt_history', []).map(normSession);
+  const rows = kindFilter(load('pt_history', []).map(normSession));
   const [a, b] = periodRange(repPeriod);
   const len = Math.round((b - a) / DAY) + 1;
   const pa = new Date(a.getTime() - len * DAY), pb = new Date(a.getTime() - DAY);
@@ -1797,7 +1809,7 @@ function periodText(){
   const S1 = stats(cur), S0 = stats(prev);
   const fd = d => d.toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'});
   const name = (document.querySelector('#repPeriods button.on') || {}).textContent || '';
-  const L = [`Treadmill report: ${fd(a)} – ${fd(b)} (${name}), compared with the previous ${len} days`];
+  const L = [`Treadmill report: ${fd(a)} – ${fd(b)} (${name}${S.repKind === 'run' ? ', runs only' : S.repKind === 'walk' ? ', walks only' : ''}), compared with the previous ${len} days`];
   const cmp = (x, y, f) => repPeriod === 'all' ? f(x) : `${f(x)} (prev ${f(y)})`;
   L.push(`Sessions ${cmp(S1.n, S0.n, v => v)} · Active ${cmp(S1.min, S0.min, v => Math.round(v) + ' min')} · Distance ${cmp(S1.km, S0.km, v => v.toFixed(1) + ' km')}`);
   L.push(`Run ${S1.runKm.toFixed(1)} km · Walk ${S1.walkKm.toFixed(1)} km` + (S1.unsplitKm > 0.05 ? ` · not split ${S1.unsplitKm.toFixed(1)} km` : ''));
@@ -1871,9 +1883,100 @@ function fmtDelta(cur, prev, unit, lowerIsBetter, digits = 0){
   const better = lowerIsBetter == null ? null : (lowerIsBetter ? d < 0 : d > 0);
   return `<div class="d ${better == null ? '' : better ? 'good' : 'bad'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(digits)}${unit} vs previous</div>`;
 }
+// ---- run vs walk sessions, and "same workout" comparison ----
+function sessKind(r){
+  if(r.steps) return r.steps.some(x => x.m === 'run' && (+x.t || 0) > 30) ? 'run' : 'walk';
+  if(r.run_min !== '' && r.run_min != null) return r.run_min > 0.5 ? 'run' : 'walk';
+  const n = (r.workout || '').toLowerCase();
+  if(/walk/.test(n) && !/run/.test(n)) return 'walk';
+  return /run|5k|jog/.test(n) ? 'run' : 'walk';
+}
+function kindFilter(rows){ const k = S.repKind || 'all'; return k === 'all' ? rows : rows.filter(r => sessKind(r) === k); }
+const wkKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+function sameWorkout(rows, name){ const k = wkKey(name); return k ? sortSessions(rows.filter(r => wkKey(r.workout) === k)) : []; }
+// change vs the previous time: better = 'up' | 'down' | null (neutral)
+function chg(cur, prev, digits, unit, better){
+  if(cur === '' || cur == null || prev === '' || prev == null) return '';
+  const d = cur - prev; if(Math.abs(d) < Math.pow(10, -digits) / 2) return '<span class="small">=</span>';
+  const good = better == null ? null : (better === 'up' ? d > 0 : d < 0);
+  return `<span class="small" style="color:${good == null ? 'var(--muted)' : good ? 'var(--good)' : 'var(--bad)'}">${d > 0 ? '▲' : '▼'}${Math.abs(d).toFixed(digits)}${unit}</span>`;
+}
+const sameLen = (a, b) => a.duration_min > 0 && b.duration_min > 0 && Math.abs(a.duration_min - b.duration_min) <= 0.1 * Math.max(a.duration_min, b.duration_min);
+function paceOf(r){ return r.duration_min > 0 && r.distance_km > 0.01 ? r.duration_min / r.distance_km : ''; }
+function renderSumPrev(){
+  const box = $('sumPrev'); if(!box || !SUM) return;
+  const r = normSession(SUM.rec);
+  const me = (r.date || '') + (r.time || '');
+  const prev = sameWorkout(load('pt_history', []).map(normSession), r.workout).filter(x => x.id !== r.id && (x.date + x.time) < me);
+  if(!prev.length){ box.style.display = 'none'; return; }
+  const p = prev[0];
+  const row = (l, a, b, d) => `<tr><td>${l}</td><td><b>${a}</b></td><td>${b}</td><td>${d}</td></tr>`;
+  const v = (x, f) => x === '' || x == null ? '–' : f(x);
+  box.style.display = '';
+  box.innerHTML = `<div class="h3">vs last time</div><div class="small">${esc(p.workout)} on ${parseD(p.date).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})}${p.time ? ' · ' + esc(p.time.slice(0,5)) : ''} · ${prev.length} earlier session${prev.length > 1 ? 's' : ''} with this name (see Reports → Compare)</div>
+    <table class="stbl" style="margin-top:6px"><tr><th></th><th>Now</th><th>Last</th><th></th></tr>
+    ${row('Time', v(r.duration_min, mmTxt), v(p.duration_min, mmTxt), chg(r.duration_min, p.duration_min, 1, ' min', null))}
+    ${row('Distance', v(r.distance_km, x => x.toFixed(2)), v(p.distance_km, x => x.toFixed(2)), chg(r.distance_km, p.distance_km, 2, '', sameLen(r, p) ? 'up' : null))}
+    ${row('Avg pace', v(paceOf(r), mmTxt), v(paceOf(p), mmTxt), chg(paceOf(r) === '' ? '' : paceOf(r) * 60, paceOf(p) === '' ? '' : paceOf(p) * 60, 0, 's', 'down'))}
+    ${row('Avg HR', v(r.avg_hr, x => x), v(p.avg_hr, x => x), chg(r.avg_hr, p.avg_hr, 0, '', 'down'))}
+    ${row('Max HR', v(r.max_hr, x => x), v(p.max_hr, x => x), chg(r.max_hr, p.max_hr, 0, '', 'down'))}
+    ${row('Zone 4+', v(r.z4plus_min, mmTxt), v(p.z4plus_min, mmTxt), chg(r.z4plus_min, p.z4plus_min, 1, ' min', 'down'))}
+    ${row('1-min recovery', v(r.recovery_hr, x => x), v(p.recovery_hr, x => x), chg(r.recovery_hr, p.recovery_hr, 0, '', 'down'))}
+    </table><div class="note">Green = better (more distance, lower heart rate, less Zone 4+, faster recovery). Conditions differ day to day, so look at the trend, not one session.</div>`;
+}
+let cmpName = null;
+function renderCompare(all){
+  const pick = $('cmpPick'); if(!pick) return;
+  const rows = kindFilter(all);
+  const groups = {};
+  for(const r of sortSessions(rows.slice())){ const k = wkKey(r.workout); if(!k) continue; (groups[k] = groups[k] || {name: r.workout, rows: []}).rows.push(r); }
+  const list = Object.values(groups).sort((a, b) => (b.rows.length > 1) - (a.rows.length > 1) || (b.rows[0].date + b.rows[0].time).localeCompare(a.rows[0].date + a.rows[0].time));
+  if(!list.length){ pick.innerHTML = ''; $('cmpSummary').textContent = 'No sessions yet.'; $('cmpChart').innerHTML = $('cmpTable').innerHTML = $('cmpLegend').innerHTML = ''; return; }
+  if(!cmpName || !groups[wkKey(cmpName)]) cmpName = list[0].name;
+  pick.innerHTML = list.map(g => `<option value="${esc(g.name)}"${wkKey(g.name) === wkKey(cmpName) ? ' selected' : ''}>${esc(g.name)} (${g.rows.length}×)</option>`).join('');
+  pick.onchange = () => { cmpName = pick.value; renderCompare(load('pt_history', []).map(normSession)); };
+  const g = groups[wkKey(cmpName)], rs = g.rows;           // newest first
+  const dfmt = d => parseD(d).toLocaleDateString('en-IN', {day:'numeric', month:'short'});
+  // summary: latest vs previous, and vs first
+  if(rs.length > 1){
+    const a = rs[0], b = rs[1], f = rs[rs.length - 1];
+    const bits = [];
+    if(a.avg_hr !== '' && b.avg_hr !== '') bits.push(`avg HR ${a.avg_hr} (${chg(a.avg_hr, b.avg_hr, 0, '', 'down') || '='})`);
+    if(a.distance_km !== '' && b.distance_km !== '') bits.push(`${a.distance_km.toFixed(2)} km (${chg(a.distance_km, b.distance_km, 2, '', sameLen(a, b) ? 'up' : null) || '='}${sameLen(a, b) ? '' : ', different length'})`);
+    if(a.z4plus_min !== '' && b.z4plus_min !== '') bits.push(`Z4+ ${mmTxt(a.z4plus_min)} (${chg(a.z4plus_min, b.z4plus_min, 1, ' min', 'down') || '='})`);
+    const first = f.avg_hr !== '' && a.avg_hr !== '' && rs.length > 2 ? ` · Since the first one (${dfmt(f.date)}): avg HR ${chg(a.avg_hr, f.avg_hr, 0, ' bpm', 'down')}` : '';
+    $('cmpSummary').innerHTML = `<b>Latest (${dfmt(a.date)}) vs previous (${dfmt(b.date)}):</b> ${bits.join(' · ') || 'no shared numbers'}${first}`;
+  } else $('cmpSummary').textContent = 'Only done once so far. The comparison fills in after the next time.';
+  // chart: avg HR and 1-min recovery over time
+  const asc = rs.slice().reverse();
+  const pts = f => asc.filter(r => r[f] !== '').map(r => ({x: parseD(r.date).getTime() + (r.time ? (+r.time.slice(0,2) * 60 + +r.time.slice(3,5)) * 60000 : 0), y: r[f],
+    tip: `<b>${dfmt(r.date)}${r.time ? ' ' + esc(r.time.slice(0,5)) : ''}</b><br>Avg HR ${r.avg_hr || '–'} · max ${r.max_hr || '–'}<br>${r.distance_km !== '' ? r.distance_km.toFixed(2) + ' km' : ''} in ${mmTxt(r.duration_min)}` + (r.recovery_hr !== '' ? `<br>1-min recovery ${r.recovery_hr}` : '')}));
+  const series = [{name:'Avg HR', color:'var(--s1)', pts: pts('avg_hr')}, {name:'1-min recovery HR', color:'var(--s2)', pts: pts('recovery_hr')}].filter(s => s.pts.length);
+  const nPts = Math.max(0, ...series.map(s => s.pts.length));
+  if(nPts >= 2){
+    const xs = series.flatMap(s => s.pts.map(p => p.x)), x0 = Math.min(...xs), x1 = Math.max(...xs), pad = Math.max(DAY / 2, (x1 - x0) * 0.04);
+    $('cmpLegend').innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('');
+    $('cmpChart').innerHTML = lineChart(series, x0 - pad, x1 + pad, 'bpm');
+  } else { $('cmpLegend').innerHTML = ''; $('cmpChart').innerHTML = ''; }
+  // table, each row vs the one before it (older)
+  $('cmpTable').innerHTML = `<table class="stbl"><tr><th>Date</th><th>Time</th><th>km</th><th>Pace</th><th>HR</th><th>Z4+</th><th>1-min</th></tr>` +
+    rs.map((r, i) => { const p = rs[i + 1] || null, pr = paceOf(r), pp = p ? paceOf(p) : '';
+      return `<tr data-row="${esc(r.id)}" style="cursor:pointer">
+        <td style="white-space:nowrap">${dfmt(r.date)}${r.time ? '<br><span class="small">' + esc(r.time.slice(0,5)) + '</span>' : ''}</td>
+        <td>${mmTxt(r.duration_min) || '–'}${p ? '<br>' + chg(r.duration_min, p.duration_min, 1, '', null) : ''}</td>
+        <td>${r.distance_km !== '' ? r.distance_km.toFixed(2) : '–'}${p ? '<br>' + chg(r.distance_km, p.distance_km, 2, '', sameLen(r, p) ? 'up' : null) : ''}</td>
+        <td style="white-space:nowrap">${pr !== '' ? mmTxt(pr) : '–'}${p && pr !== '' && pp !== '' ? '<br>' + chg(pr * 60, pp * 60, 0, 's', 'down') : ''}</td>
+        <td style="white-space:nowrap">${r.avg_hr !== '' ? r.avg_hr + (r.max_hr !== '' ? '<span class="small">/' + r.max_hr + '</span>' : '') : '–'}${p ? '<br>' + chg(r.avg_hr, p.avg_hr, 0, '', 'down') : ''}</td>
+        <td>${r.z4plus_min !== '' ? mmTxt(r.z4plus_min) : '–'}${p ? '<br>' + chg(r.z4plus_min, p.z4plus_min, 1, '', 'down') : ''}</td>
+        <td>${r.recovery_hr !== '' ? r.recovery_hr : '–'}${p ? '<br>' + chg(r.recovery_hr, p.recovery_hr, 0, '', 'down') : ''}</td></tr>`; }).join('') + '</table>' +
+    '<div class="note">Each arrow compares with the row below (the time before). Green = better, red = worse. Distance is only judged when both sessions lasted about the same time (grey otherwise). Tap a row to open it.</div>';
+  $('cmpTable').querySelectorAll('[data-row]').forEach(x => x.onclick = () => editSession(x.dataset.row));
+}
 function renderReports(){
   if(!$('repKpis')) return;
-  const rows = load('pt_history', []).map(normSession);
+  const allRows = load('pt_history', []).map(normSession);
+  renderCompare(allRows);
+  const rows = kindFilter(allRows);
   const [a, b] = periodRange(repPeriod);
   const len = Math.round((b - a) / DAY) + 1;
   const pa = new Date(a.getTime() - len*DAY), pb = new Date(a.getTime() - DAY);
@@ -2197,6 +2300,11 @@ function init(){
     if(repPeriod === 'custom' && !$('repFrom').value){ const t = new Date(); $('repTo').value = localDate(t); $('repFrom').value = localDate(new Date(t.getTime() - 29*DAY)); }
     renderReports(); });
   $('repFrom').onchange = $('repTo').onchange = renderReports;
+  document.querySelectorAll('#repKind button').forEach(b => {
+    b.classList.toggle('on', b.dataset.k === (S.repKind || 'all'));
+    b.onclick = () => { S.repKind = b.dataset.k; save('pt_settings', S);
+      document.querySelectorAll('#repKind button').forEach(x => x.classList.toggle('on', x === b)); renderReports(); renderHistory(); };
+  });
   save('pt_history', sortSessions(load('pt_history', []).map(normSession)));
   renderWorkoutList(); renderHistory(); renderTargets(); renderReports(); renderPlanEditor(); renderHome();
   checkLive();
