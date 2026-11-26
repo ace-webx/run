@@ -202,6 +202,10 @@
 <!-- HOME -->
 <div class="tab on" id="tab-home">
   <div class="hello"><div class="small" id="homeDate"></div><h2 id="homeHello">Summary</h2></div>
+  <div class="banner" id="expiryBanner" style="display:none"></div>
+  <div class="card" id="hkCard" style="display:none"></div>
+  <div class="card" id="readyCard" style="display:none"></div>
+  <div class="card" id="coachCard" style="display:none"></div>
   <div class="card" id="todayCard"></div>
   <div class="card"><div class="h3">This week</div><div id="weekProg"></div></div>
   <div class="card"><div class="h3">Kilometres</div><div id="homeKm"></div><div id="homeKmLegend" class="legend"></div><div id="homeKmChart"></div></div>
@@ -322,6 +326,18 @@
 
 </div>
 
+<div class="tab" id="tab-body">
+  <div class="card" id="bodyKpis"></div>
+  <div class="card"><div class="h3">Weight</div><div class="small">Dots = weigh-ins · line = 7-day average (the number to watch; daily weight swings 0.5–1 kg with water and food).</div>
+    <div id="bodyLegend" class="legend"></div><div id="bodyChart"></div></div>
+  <div class="card"><div class="h3">Add an entry</div>
+    <div class="fgrid"><div><label>Date</label><input type="date" id="bDate"></div><div><label>Weight (kg)</label><input id="bWeight" type="number" inputmode="decimal" step="0.1"></div></div>
+    <div class="fgrid"><div><label>Waist (cm)</label><input id="bWaist" type="number" inputmode="decimal" step="0.5"></div><div><label>Note</label><input id="bNote" type="text" placeholder="optional"></div></div>
+    <button class="primary" id="bSave" style="width:100%;margin-top:10px">Save</button>
+    <div class="note">Weigh in the morning after the toilet, before food or water, ideally 2–3 times a week. Waist: once a month at the navel, relaxed, after breathing out. <span id="bHealthNote"></span></div></div>
+  <div class="card"><div class="h3">Entries</div><div id="bodyList"></div></div>
+</div>
+
 <div class="tab" id="tab-reports">
   <div class="card">
     <div class="seg" id="repPeriods">
@@ -391,6 +407,24 @@
     <div class="note">For a much more natural voice, download one on your iPhone: <b>Settings → Accessibility → Spoken Content → Voices → English</b> → pick a voice marked <b>Enhanced</b> or <b>Premium</b> (e.g. an English (India) voice) and tap download. Then reopen Bluefy and choose it here. Siri voices can't be used by web apps.</div>
   </div>
   <div class="card">
+    <h3 style="margin:0">Milestone announcements</h3>
+    <div class="small">Spoken during workouts, also with the screen locked in the iPhone app.</div>
+    <label>Distance</label>
+    <select id="msDist"><option value="0">Off</option><option value="500">Every 500 m</option><option value="1000">Every 1 km</option></select>
+    <label>Time</label>
+    <select id="msTime"><option value="0">Off</option><option value="300">Every 5 min</option><option value="600">Every 10 min</option></select>
+    <div class="toggle"><span>Halfway + "5 minutes left"</span><input type="checkbox" id="msHalf"></div>
+    <div class="toggle"><span>Rounds ("Round 3 of 6 done")</span><input type="checkbox" id="msRounds"></div>
+    <div class="toggle"><span>Personal records</span><input type="checkbox" id="msRecords"></div>
+    <div class="toggle"><span>Summary at the end (incl. this week's km)</span><input type="checkbox" id="msSummary"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin:0">Weather & readiness</h3>
+    <div class="small">Weather for the readiness check and session notes (Open-Meteo, free, no account). Default: Mohali.</div>
+    <div class="fgrid"><div><label>Latitude</label><input id="sLat" type="number" step="0.01"></div><div><label>Longitude</label><input id="sLon" type="number" step="0.01"></div></div>
+    <div class="row" style="margin-top:8px;gap:8px"><button class="ghost grow" data-place="30.70,76.72">Mohali</button><button class="ghost grow" data-place="31.99,76.79">Joginder Nagar</button></div>
+  </div>
+  <div class="card">
     <h3 style="margin:0">Weekly plan</h3>
     <div class="small">What Home suggests for each day. Change it when your plan changes.</div>
     <div id="planEditor"></div>
@@ -416,6 +450,7 @@
     </div>
     <div class="small">If something doesn't work, copy this log and send it to Claude.</div>
     <div class="small" style="margin-top:6px">App version: <b id="appVersion"></b></div>
+    <div class="small" id="appExpiry" style="display:none"></div>
     <button class="ghost" id="btnScanAll" style="margin-top:8px;width:100%">Troubleshoot: scan ALL Bluetooth devices</button>
     <div id="log"></div>
   </div>
@@ -432,9 +467,85 @@
   <button data-tab="workouts">Workouts</button>
   <button data-tab="run">Run</button>
   <button data-tab="reports">Reports</button>
+  <button data-tab="body">Body</button>
   <button data-tab="settings">Settings</button>
 </nav>
 
+<script>
+// ---------- Native iPhone app (Capacitor): Web-Bluetooth-style shim over the native "Treadmill" plugin ----------
+// In the native app there is no navigator.bluetooth, so this provides the small part of it the app uses.
+// In Bluefy / Chrome this block does nothing.
+const NATIVE = !!(window.Capacitor && window.Capacitor.nativePromise && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const TM = NATIVE ? {
+  call: (m, o) => window.Capacitor.nativePromise('Treadmill', m, o || {}),
+  on: (ev, fn) => window.Capacitor.addListener('Treadmill', ev, fn)
+} : null;
+if(NATIVE){
+  const chars = new Map(), devices = new Map();            // "id|service|char" → characteristic object;  id → device
+  const lc = s => String(s).toLowerCase();
+  const dv = arr => new DataView(new Uint8Array(arr || []).buffer);
+  const errOf = e => { const m = (e && (e.message || e.errorMessage)) || String(e); const er = new Error(m.replace(/^\w+Error:\s*/, '')); er.name = (m.match(/^(\w+Error):/) || [,'Error'])[1]; return er; };
+  TM.on('notify', d => { const c = chars.get(d.id + '|' + d.service + '|' + d.characteristic); if(c){ c.value = dv(d.value); c._fire(); } });
+  TM.on('disconnected', d => { const x = devices.get(d.id); if(x){ x.gatt.connected = false; (x._l.gattserverdisconnected || []).forEach(f => { try{ f({target:x}); }catch(e){} }); } });
+  TM.on('programDone', () => { try{ if(document.visibilityState === 'visible') syncFromNative(); }catch(e){} });
+  TM.on('bglog', d => { (d.lines || []).forEach(l => { try{ log('[background] ' + l); }catch(e){} }); });
+  function mkChar(id, svc, uuid){
+    const k = id + '|' + svc + '|' + uuid; if(chars.has(k)) return chars.get(k);
+    const c = {uuid, value:null, _l:[],
+      addEventListener(t, f){ if(t === 'characteristicvaluechanged') this._l.push(f); },
+      removeEventListener(t, f){ this._l = this._l.filter(x => x !== f); },
+      _fire(){ this._l.forEach(f => { try{ f({target:this}); }catch(e){ console.error(e); } }); },
+      async startNotifications(){ try{ await TM.call('startNotifications', {id, service:svc, characteristic:uuid}); return this; }catch(e){ throw errOf(e); } },
+      async readValue(){ try{ const r = await TM.call('read', {id, service:svc, characteristic:uuid}); this.value = dv(r.value); return this.value; }catch(e){ throw errOf(e); } },
+      async writeValueWithResponse(buf){ try{ await TM.call('write', {id, service:svc, characteristic:uuid, value:[...new Uint8Array(buf.buffer || buf)], withResponse:true}); }catch(e){ throw errOf(e); } },
+      async writeValue(buf){ return this.writeValueWithResponse(buf); }};
+    chars.set(k, c); return c;
+  }
+  function mkDevice(d){
+    if(devices.has(d.id)) return devices.get(d.id);
+    const x = {id:d.id, name:d.name, _l:{}, _svcs:[],
+      addEventListener(t, f){ (this._l[t] = this._l[t] || []).push(f); },
+      removeEventListener(t, f){ this._l[t] = (this._l[t] || []).filter(g => g !== f); }};
+    x.gatt = {connected:false, device:x,
+      async connect(){ try{ const r = await TM.call('connect', {id:x.id}); x._svcs = (r.services || []).map(lc); this.connected = true; return this; }catch(e){ throw errOf(e); } },
+      disconnect(){ this.connected = false; TM.call('disconnect', {id:x.id}).catch(() => {}); },
+      async getPrimaryService(u){ u = lc(u); if(!x._svcs.includes(u)){ const e = new Error('Service ' + u + ' not found'); e.name = 'NotFoundError'; throw e; }
+        return {uuid:u, getCharacteristic: async cu => mkChar(x.id, u, lc(cu))}; }};
+    devices.set(d.id, x); return x;
+  }
+  function pickDevice(list){                               // simple chooser when more than one device answers
+    return new Promise((resolve, reject) => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+      ov.innerHTML = '<div style="background:var(--card,#fff);color:var(--text,#111);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px 28px;font:16px -apple-system,system-ui">' +
+        '<b>Choose a device</b>' + list.map((d, i) => `<button data-i="${i}" style="display:block;width:100%;text-align:left;margin-top:10px;padding:14px;border-radius:12px;border:1px solid rgba(128,128,128,.3);background:transparent;color:inherit;font:inherit">${String(d.name).replace(/</g,'&lt;')} <span style="opacity:.6;font-size:13px">signal ${d.rssi || '–'}</span></button>`).join('') +
+        '<button data-x="1" style="display:block;width:100%;margin-top:14px;padding:12px;border:0;background:transparent;color:inherit;opacity:.7;font:inherit">Cancel</button></div>';
+      ov.onclick = e => { const b = e.target.closest('button'); if(!b && e.target !== ov) return; ov.remove();
+        if(b && b.dataset.i != null) resolve(list[+b.dataset.i]); else { const er = new Error('User cancelled the requestDevice() chooser.'); er.name = 'NotFoundError'; reject(er); } };
+      document.body.appendChild(ov);
+    });
+  }
+  navigator.bluetooth = {
+    async requestDevice(opts){
+      opts = opts || {};
+      const services = [], prefixes = [];
+      (opts.filters || []).forEach(f => { (f.services || []).forEach(s => services.push(lc(s))); if(f.namePrefix) prefixes.push(f.namePrefix); });
+      try{                                                 // already connected natively (page reloaded)? reuse it, no scan
+        const s = await TM.call('status');
+        const want = services.length ? services : null;
+        const hit = (s.connected || []).find(d => want ? want.some(u => (d.services || []).includes(u)) : prefixes.some(p => (d.name || '').startsWith(p)));
+        if(hit) return mkDevice(hit);
+      }catch(e){}
+      let r;
+      try{ r = await TM.call('scan', {services, namePrefix: prefixes[0] || '', all: !!opts.acceptAllDevices, seconds: 3}); }catch(e){ throw errOf(e); }
+      let list = r.devices || [];
+      if(!list.length){ const e = new Error('No device found. Is the treadmill switched on (and the FitShow app closed)?'); e.name = 'NotFoundError'; throw e; }
+      const pick = list.length === 1 ? list[0] : await pickDevice(list);
+      return mkDevice(pick);
+    }
+  };
+}
+</script>
 <script>
 "use strict";
 /* ============================================================
@@ -474,8 +585,8 @@ const BUILTIN = [
 ];
 
 // ---------- Settings ----------
-const APP_VERSION = '2026-11-25c (meal fuel · run/walk filter · compare)';
-const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:''};
+const APP_VERSION = '2026-11-26c (readiness · coach · body · live activity)';
+const DEFAULTS = {voiceURI:'', voiceRate:1.0, voicePitch:1.0, manualMode:'auto', plan:null, theme:'auto', maxSpeed:8.0, guard:true, guardHr:158, guardSec:30, guardDrop:0.3, autoStop:true, voice:true, hook:'', key:'', msDist:500, msTime:600, msHalf:true, msRounds:true, msRecords:true, msSummary:true, lat:30.70, lon:76.72};
 let S = Object.assign({}, DEFAULTS, load('pt_settings', {}));
 function load(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
@@ -675,9 +786,19 @@ function onStatus(dv){
 function onTreadmillData(dv){
   const d = parseTreadmillData(dv);
   if(d.speed !== undefined) st.speed = d.speed;
-  if(d.distance !== undefined) st.distance = d.distance;
+  // The treadmill resets its distance/kcal counters when the belt stops. If that happens mid-session
+  // (e.g. the workout ended while the app was in the background), keep the session totals instead of dropping to 0.
+  if(d.distance !== undefined){
+    if(st.sessionStarted && st.distance != null && st.distAtStart != null && d.distance + 5 < st.distance){
+      st.distAtStart = d.distance - (st.distance - st.distAtStart); log('Treadmill distance counter reset: session distance kept');
+    }
+    st.distance = d.distance;
+  }
   if(d.incline !== undefined) st.incline = d.incline;
-  if(d.kcal !== undefined) st.kcal = d.kcal;
+  if(d.kcal !== undefined){
+    if(st.sessionStarted && st.kcal != null && st.kcalAtStart != null && d.kcal + 2 < st.kcal) st.kcalAtStart = d.kcal - (st.kcal - st.kcalAtStart);
+    st.kcal = d.kcal;
+  }
   if(d.elapsed !== undefined) st.elapsed = d.elapsed;
   if(d.hr !== undefined && (!st.hrSrc || st.hrSrc === 'treadmill')){ st.hr = d.hr; st.hrSrc = 'treadmill'; }
   if(!st._logged || st._logged < 3){ log('Data', hex(dv), JSON.stringify(d)); st._logged = (st._logged||0) + 1; }
@@ -712,7 +833,8 @@ async function startWorkout(wk){
   if(W.active && !confirm('A workout is already running. Replace it?')) return;
   if(wk.locked && !confirm('This one is Phase 3 and not unlocked in your plan yet (earliest early December). Start anyway?')) return;
   unlockAudio(); keepAwake(true);
-  Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, stepSec:0, stepDist:0, stepLog:[], warned:false, override:null, guardSec:0, stepdowns:0, done:false});
+  nativeStepKm = {};
+  Object.assign(W, {active:true, wk, steps:flattenSteps(wk.steps), idx:0, msCfg:null, stepSec:0, stepDist:0, stepLog:[], warned:false, override:null, guardSec:0, stepdowns:0, done:false});
   clearLive();
   resetSession();
   W.stepStartDist = curDist();
@@ -724,6 +846,8 @@ async function startWorkout(wk){
     await startBelt();
     await sleep(st.demo ? 500 : 3500);          // treadmill countdown
     await applyStep(W.steps[0], true);
+    if(!NATIVE){ W.msCfg = buildMilestones(); MS.init(W.msCfg); }
+    syncNative();
   })();
   renderWorkout();
 }
@@ -789,27 +913,136 @@ function isRunningNow(){
 }
 function currentStepSpeed(){ return W.override != null ? W.override : W.steps[W.idx].speed; }
 
+function syncNative(){                              // native app: hand the remaining steps to the background runner
+  if(!NATIVE) return;
+  if(!W.active || W.done || !W.steps[W.idx]){ TM.call('clearProgram').catch(() => {}); return; }
+  const cur = W.steps[W.idx];
+  if(!W.msCfg) W.msCfg = buildMilestones();
+  TM.call('setProgram', {id: dev && dev.id, base: W.idx, name: W.wk ? W.wk.name : 'Workout', total: W.steps.length, ms: W.msCfg, voiceId: S.voiceURI || '', rate: +S.voiceRate || 1, pitch: +S.voicePitch || 1, steps: W.steps.slice(W.idx).map(s => ({label:s.label, mode:s.mode, speed: W.override != null && s === cur ? W.override : s.speed, incline:s.incline, kind:s.kind, value:s.value})),
+    stepSec: W.stepSec, stepDistDone: cur.kind === 'dist' ? Math.max(0, curDist() - W.stepStartDist) : 0, warned: !!W.warned,
+    maxSpeed: S.maxSpeed, voice: !!S.voice, autoStop: !!S.autoStop, incline: st.targetIncline}).catch(e => log('setProgram failed', errText(e)));
+}
+// Native app: the native runner keeps counting even when the page is frozen or reloaded. If it is ahead of the page
+// (time the page missed), catch the page up to it; if it finished the workout, finish here too.
+// ---------- Milestone announcements ----------
+// Built once per workout. In the iPhone app the native side announces (so it works with the screen locked);
+// in Bluefy / Chrome the page does it with the same rules.
+function spokenTime(sec){ sec = Math.round(sec); const m = Math.floor(sec / 60), s = sec % 60;
+  return (m ? `${m} minute${m === 1 ? '' : 's'}` : '') + (s && m < 10 ? `${m ? ' ' : ''}${s} second${s === 1 ? '' : 's'}` : '') || '0 seconds'; }
+function spokenKm(m){ const k = m / 1000; return `${k >= 10 ? k.toFixed(1) : (+k.toFixed(2)).toString()} kilometre${Math.abs(k - 1) < 0.005 ? '' : 's'}`; }
+function msRecords(topSpeed){
+  const rows = load('pt_history', []).map(normSession);
+  let runM = 0, sessM = 0, fastSec = 0;
+  for(const r of rows){
+    if(r.distance_km > 0) sessM = Math.max(sessM, r.distance_km * 1000);
+    if(r.steps && r.steps.length){
+      let cm = 0, cf = 0;
+      for(const x of r.steps){
+        if(x.m === 'run'){ cm += (+x.d || 0) * 1000; runM = Math.max(runM, cm); } else cm = 0;
+        if(topSpeed && x.m === 'run' && +x.s >= topSpeed - 0.05){ cf += +x.t || 0; fastSec = Math.max(fastSec, cf); } else cf = 0;
+      }
+    } else if(r.run_min > 0){
+      const km = r.run_min >= r.duration_min - 0.5 && r.distance_km > 0 ? r.distance_km : (r.run_speed > 0 ? r.run_speed * r.run_min / 60 : 0);
+      runM = Math.max(runM, km * 1000);
+      if(topSpeed && r.run_speed >= topSpeed - 0.05) fastSec = Math.max(fastSec, r.run_min * 60);
+    }
+  }
+  return {runM: Math.round(runM), sessM: Math.round(sessM), fastSec: Math.round(fastSec), topSpeed: topSpeed || 0};
+}
+function buildMilestones(){
+  const steps = W.steps || [], allTime = steps.every(x => x.kind !== 'dist'), allDist = steps.length && steps.every(x => x.kind === 'dist');
+  const runs = steps.filter(x => x.mode === 'run'), top = runs.length ? Math.max(...runs.map(x => x.speed)) : 0;
+  const roundEnds = {};
+  steps.forEach((x, i) => { const mt = (x.label || '').match(/ (\d+)\/(\d+)$/); if(!mt) return;
+    const nx = steps[i + 1], nm = nx && (nx.label || '').match(/ (\d+)\/(\d+)$/);
+    if(!nm || nm[1] !== mt[1] || nm[2] !== mt[2]) roundEnds[i] = [+mt[1], +mt[2]]; });
+  const rows = load('pt_history', []).map(normSession), ws = weekStart(new Date()), lws = new Date(ws.getTime() - 7 * DAY);
+  const kmIn = (a, b) => rows.filter(r => { const d = parseD(r.date); return d >= a && d < b; }).reduce((s, r) => s + (+r.distance_km || 0), 0);
+  return {dist: +S.msDist || 0, time: +S.msTime || 0, half: !!S.msHalf, rounds: !!S.msRounds, records: !!S.msRecords, summary: !!S.msSummary,
+    totalSec: allTime ? steps.reduce((a, x) => a + x.value, 0) : 0, totalM: allDist ? steps.reduce((a, x) => a + x.value, 0) : 0,
+    roundEnds, rec: msRecords(top), weekKm: +kmIn(ws, new Date(ws.getTime() + 7 * DAY)).toFixed(2), lastWeekKm: +kmIn(lws, ws).toFixed(2),
+    startSec: W.steps.slice(0, W.idx).reduce((a, x) => a + (x.kind === 'dist' ? 0 : x.value), 0) + (W.stepSec || 0), startM: Math.round(sessionDistKm() * 1000)};
+}
+function summaryText(km, sec, cfg){
+  let t = `Workout complete. ${spokenKm(km * 1000)} in ${spokenTime(sec)}.`;
+  if(cfg && cfg.summary){
+    const wk = cfg.weekKm + km; t += ` This week ${spokenKm(wk * 1000)}`;
+    if(cfg.lastWeekKm > 0 && wk > cfg.lastWeekKm) t += `, already more than all of last week`;
+    t += '.';
+  }
+  return t;
+}
+const MS = {                                          // page-side tracker (Bluefy / Chrome only)
+  init(cfg){ this.c = cfg; const c = cfg;
+    this.s = {pos: c.startSec, m: c.startM, nextD: c.dist ? (Math.floor(c.startM / c.dist) + 1) * c.dist : Infinity,
+      nextT: c.time ? (Math.floor(c.startSec / c.time) + 1) * c.time : Infinity, kmPos: c.startSec, half: false, cd: false, lastKm: false, runM: 0, fastSec: 0, rRun: false, rSess: false, rFast: false}; },
+  tick(dt, m, step){
+    const c = this.c, s = this.s; if(!c || !step) return;
+    const dm = Math.max(0, m - s.m); s.m = m; s.pos += dt;
+    const say = t => speak(t, false, true);
+    while(m >= s.nextD){ const k = s.nextD;
+      if(k % 1000 === 0){ say(`${spokenKm(k)}. That kilometre took ${spokenTime(s.pos - s.kmPos)}.`); s.kmPos = s.pos; } else say(`${spokenKm(k)}.`);
+      s.nextD += c.dist; s.lastD = s.pos; }
+    while(s.pos >= s.nextT){ if(!(c.totalSec && s.nextT >= c.totalSec - 5)) say(`${Math.round(s.nextT / 60)} minutes.` + (s.pos - (s.lastD ?? -999) < 60 ? '' : ` ${spokenKm(m)}.`)); s.nextT += c.time; }
+    if(c.half && c.totalSec >= 600){
+      if(!s.half && s.pos >= c.totalSec / 2){ s.half = true; say(`Halfway. ${spokenTime(c.totalSec - s.pos)} to go.`); }
+      if(!s.cd && c.totalSec >= 900 && c.totalSec - s.pos <= 300 && c.totalSec - s.pos > 240){ s.cd = true; say('5 minutes left.'); }
+    }
+    if(c.half && c.totalM >= 2000){
+      if(!s.half && m >= c.totalM / 2){ s.half = true; say(`Halfway. ${spokenKm(c.totalM - m)} to go.`); }
+      if(!s.lastKm && c.totalM - m <= 1000){ s.lastKm = true; say('Last kilometre.'); }
+    }
+    if(step.mode === 'run'){ s.runM += dm; if(c.rec.topSpeed && step.speed >= c.rec.topSpeed - 0.05) s.fastSec += dt; else s.fastSec = 0; } else { s.runM = 0; s.fastSec = 0; }
+    if(c.records){
+      if(!s.rRun && c.rec.runM > 0 && s.runM > c.rec.runM + 100){ s.rRun = true; say(`New record: your longest continuous run, ${spokenKm(s.runM)}.`); }
+      if(!s.rSess && c.rec.sessM > 0 && m > c.rec.sessM + 100){ s.rSess = true; say('New record: your longest workout distance.'); }
+      if(!s.rFast && c.rec.fastSec > 0 && s.fastSec > c.rec.fastSec + 60){ s.rFast = true; say(`New record: ${Math.floor(s.fastSec / 60)} minutes at ${c.rec.topSpeed.toFixed(1)} or faster.`); }
+    }
+  },
+  stepDone(i){ const c = this.c; if(!c || !c.rounds || !c.roundEnds[i]) return; const [k, n] = c.roundEnds[i];
+    speak(k >= n ? 'Last round done.' : `Round ${k} of ${n} done. ${n - k} to go.`, false, true); }
+};
+let nativeStepKm = {};
+async function syncFromNative(){
+  if(!NATIVE || !W.active || W.done) return;
+  let s; try{ s = await TM.call('status'); }catch(e){ return; }
+  if(!W.active || W.done) return;
+  const posOf = (i, sec) => W.steps.slice(0, i).reduce((a, x) => a + (x.kind === 'dist' ? 0 : x.value), 0) + sec;
+  const total = posOf(W.steps.length, 0), mine = posOf(W.idx, W.stepSec);
+  // the native side measured each finished step with the treadmill's own distance: prefer that over our estimate
+  // (while the page was frozen we could only guess, using the speed at the moment we came back)
+  nativeStepKm = {};
+  Object.entries(s.stepMetres || {}).forEach(([k, m]) => { if(m > 0) nativeStepKm[+k] = +(m / 1000).toFixed(3); });
+  (W.stepLog || []).forEach((x, i) => { if(nativeStepKm[i] != null) x.d = nativeStepKm[i]; });
+  const theirs = s.done ? total : (s.active ? posOf(Math.min(s.idx, W.steps.length), s.stepSec) : null);
+  if(theirs == null) return;
+  const delta = theirs - mine;
+  if(s.done && s.spokeSummary) W.nativeDone = true;
+  if(delta > 2){ log(`Native runner is ${Math.round(delta)}s ahead${s.done ? ' (workout finished)' : ''}: catching up`); catchUp(delta + (s.done ? 1 : 0), true); }
+}
 function logStep(){                                 // record time + distance of the step just finished (or ended early)
   const s = W.steps[W.idx]; if(!s || W.stepSec < 1) return;
-  (W.stepLog = W.stepLog || []).push({l: s.label, m: s.mode, s: s.speed, t: Math.round(W.stepSec), d: +(W.stepDist || 0).toFixed(3)});
+  (W.stepLog = W.stepLog || []).push({l: s.label, m: s.mode, s: s.speed, t: Math.round(W.stepSec), d: nativeStepKm[W.idx] != null ? nativeStepKm[W.idx] : +((W.stepDist || 0) / 1000).toFixed(3)});   // stepDist is in metres; the log is in km
 }
 function advanceStep(){
   logStep();
+  if(!NATIVE) MS.stepDone(W.idx);
   W.idx++; W.stepSec = 0; W.stepDist = 0; W.warned = false; W.override = null; W.guardSec = 0;
   W.stepStartDist = curDist();
   if(W.idx >= W.steps.length){ finishWorkout(); return; }
   const s = W.steps[W.idx];
   speak(`${s.label}. ${Math.min(s.speed, S.maxSpeed).toFixed(1)}`);
   applyStep(s);
-  renderWorkout();
+  renderWorkout(); syncNative();
 }
 function skipStep(){ if(W.active && !W.done) advanceStep(); }
 
 function finishWorkout(manual){
   if(!W.active) return;
   if(W.idx < W.steps.length) logStep();             // ended early: keep the partial step
-  W.done = true; W.active = false;
-  speak(manual ? 'Workout ended' : 'Workout complete. Well done.');
+  W.done = true; W.active = false; syncNative();
+  if(manual) speak('Workout ended');
+  else if(!W.nativeDone){ const cfg = W.msCfg || (W.msCfg = buildMilestones()); speak(summaryText(sessionDistKm(), st.beltSec, cfg)); }   // the native side already said it if it finished in the background
   if(S.autoStop || manual) stopBelt();
   endSession(W.wk.name);
   clearLive();
@@ -939,7 +1172,9 @@ function planCheck(r){
 function openSummary(rec, editing){
   const {c, rest} = parseCond(rec.notes);
   const last = S.lastCond || {};
-  if(!editing){ if(!c.fuel) c.fuel = last.fuel || ''; if(!c.air) c.air = last.air || ''; }
+  if(!editing){ if(!c.fuel) c.fuel = last.fuel || ''; if(!c.air) c.air = last.air || '';
+    if(c.temp === '' && WX){ c.temp = WX.temp; c.rh = WX.rh; }                         // weather from the readiness check
+    if(c.sleep === '' && READY && READY.hk && READY.hk.sleepH != null) c.sleep = Math.round(READY.hk.sleepH * 2) / 2; }
   SUM = {rec: {...rec}, cond: c, notes: rest, editing, touched: new Set(), openedAt: Date.now()};
   const r = SUM.rec, F = (k, label, val, type = 'number', step = '1') =>
     `<div><label>${label}</label><input data-k="${k}" type="${type}" inputmode="decimal" step="${step}" value="${val === '' || val == null ? '' : esc(String(val))}"></div>`;
@@ -1108,6 +1343,10 @@ async function getWatchHr(){
   for(let i = 0; i < 4 && Sync.queue().length; i++) await Sync.flush();
   if(Sync.queue().length){ if(btn){ btn.disabled = false; btn.textContent = '❤️ Get HR from Apple Watch'; } return showBanner('Could not save the session to your Sheet (check internet), so the shortcut has nothing to update yet. Try again.'); }
   const start = r.started_at ? new Date(r.started_at) : new Date(`${r.date}T${r.time}:00`);
+  if(NATIVE) return watchHrNative(r, start, btn);
+  watchHrShortcut(r, start);
+}
+function watchHrShortcut(r, start){
   // Shortcuts' "Start Date is in the last N days" filter: 1 = today's session, 2 = yesterday's, etc.
   // window for the Shortcut's "Start Date is between" filter. Its date boxes only keep the DAY, so send midnight of the
   // session day → midnight of the next day; the Sheet script then keeps only readings inside the exact session time.
@@ -1118,6 +1357,29 @@ async function getWatchHr(){
   closeSummary();
   showBanner('Opening the "Treadmill HR" shortcut… When it shows the result, come back here.');
   (window.__openUrl || (u => { location.href = u; }))('shortcuts://run-shortcut?name=' + encodeURIComponent('Treadmill HR') + '&input=text&text=' + encodeURIComponent([r.id, hrStamp(dayStart(start)), hrStamp(dayStart(new Date(start.getTime() + (+r.duration_min) * 60000 + 120000)) + 86400000), days].join('|')));
+}
+// Native app: read heart rate straight from Apple Health, send it to the Sheet in the same format the Shortcut uses
+async function watchHrNative(r, start, btn){
+  const reset = () => { if(btn){ btn.disabled = false; btn.textContent = '❤️ Get HR from Apple Watch'; } };
+  try{
+    if(btn) btn.textContent = 'Reading Apple Health…';
+    const from = start.getTime() - 60000, to = start.getTime() + (+r.duration_min) * 60000 + 120000;
+    let res;
+    try{ res = await Promise.race([TM.call('heartRate', {from, to}),
+      new Promise((_, no) => setTimeout(() => no(new Error('Apple Health did not answer within 60 s')), 60000))]); }
+    catch(e){ log('Apple Health not available in this build:', errText(e), '→ using the Shortcut'); reset(); return watchHrShortcut(r, start); }
+    const sm = res.samples || [];
+    if(sm.length < 2){ reset(); return showBanner(sm.length ? 'Only 1 heart-rate reading found in Apple Health for this time. Was a Watch workout running?' :
+      'No heart rate found in Apple Health for this time. Check that a Watch workout was recording, and that Health access is on: iPhone Settings → Health → Data Access & Devices → Treadmill → Heart Rate.'); }
+    if(btn) btn.textContent = 'Sending to your Sheet…';
+    const body = ['HR', S.key, r.id, 'DATES', ...sm.map(x => new Date(x.t).toISOString()), 'VALUES', ...sm.map(x => String(Math.round(x.v)))].join('\n');
+    const reply = await readJson(await fetch(S.hook, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body}));
+    if(!reply.ok){ reset(); return showBanner(reply.message || reply.error || 'The Sheet did not accept the heart rate.'); }
+    save('pt_awaitHr', {id: r.id, at: Date.now()});
+    closeSummary();
+    showBanner(reply.message.replace(/ Return to the treadmill app\.?$/, ''));
+    await Sync.pull();
+  }catch(e){ reset(); showBanner('Could not get heart rate: ' + errText(e)); }
 }
 function checkAwaitHr(sessions){
   const w = load('pt_awaitHr', null); if(!w) return;
@@ -1204,15 +1466,19 @@ const Sync = {
       // Sheet is the master copy; changes still waiting to upload are layered on top so nothing local is lost
       let ws = (d.workouts || []).map(w => ({id:String(w.id), name:w.name, desc:w.desc || '', steps:w.steps}));
       let ss = (d.sessions || []).map(normSession);
+      let bs = (d.body || []).map(b => ({...b, id: String(b.id)}));
       const q = this.queue();
       for(const op of q){
         if(op.type === 'workout'){ ws = ws.filter(w => w.id !== op.data.id); ws.push(op.data); }
         if(op.type === 'deleteWorkout') ws = ws.filter(w => w.id !== op.id);
         if(op.type === 'session' && !ss.some(r => r.id === op.data.id)) ss.push(normSession(op.data));
         if(op.type === 'deleteSession') ss = ss.filter(r => r.id !== op.id);
+        if(op.type === 'body'){ bs = bs.filter(b => b.id !== op.data.id); bs.push(op.data); }
+        if(op.type === 'deleteBody') bs = bs.filter(b => b.id !== op.id);
       }
       save('pt_custom', ws); save('pt_history', sortSessions(ss));
-      renderWorkoutList(); renderHistory(); renderReports(); renderHome(); renderPlanEditor();
+      if(d.body) save('pt_body', bs);
+      renderWorkoutList(); renderHistory(); renderReports(); renderHome(); renderPlanEditor(); renderBody();
       const imported = ss.filter(r => r.source === 'import').length;
       checkAwaitHr(ss);
       setSync('Synced ' + new Date().toTimeString().slice(0,5) + ' · ' + ss.length + ' sessions' + (q.length ? ` · ${q.length} change(s) waiting to upload` : ''), q.length > 0);
@@ -1253,10 +1519,15 @@ function catchUp(gap, paused = true){
   if(left > 0.5) accountGap(left, isRunningNow());
   if(!W.active) return;
   if(W.idx >= W.steps.length){
-    if(paused) showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app. The workout finished in the meantime, so it has been ended and saved.`);
+    if(paused) showBanner(NATIVE ? 'The workout finished while the app was in the background. Review and save it.' : `iPhone paused the app for ${mmss(gap)} while you were in another app. The workout finished in the meantime, so it has been ended and saved.`);
     finishWorkout(); return;
   }
   const cur = W.steps[W.idx], moved = W.idx !== startIdx;
+  if(NATIVE && paused){                              // the native runner already changed speed and spoke the cues
+    if(moved) applyStep(cur);
+    showBanner(`Background: ${moved ? `steps changed on time while the app was hidden. Now on "${cur.label}".` : 'workout time updated.'}`);
+    renderWorkout(); syncNative(); return;
+  }
   if(moved){ applyStep(cur); speak(`${paused ? 'Welcome back. ' : ''}Now ${cur.label}, ${Math.min(cur.speed, S.maxSpeed).toFixed(1)}`); beep(2); }
   if(paused) showBanner(`iPhone paused the app for ${mmss(gap)} while you were in another app, so speed changes couldn't be sent then. ` +
     (moved ? `Caught up: now on "${cur.label}" at ${Math.min(cur.speed, S.maxSpeed).toFixed(1)} km/h.` : 'Workout time has been updated.') + ' Keep this screen open during workouts.');
@@ -1267,6 +1538,7 @@ function catchUp(gap, paused = true){
 const NOSLEEP_MP4 = 'data:video/mp4;base64,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';                       // tiny silent video from NoSleep.js (MIT), for browsers without Wake Lock
 let nsVideo = null;
 function keepAwake(on){
+  if(NATIVE){ TM.call('keepAwake', {on: !!on}).catch(() => {}); return; }
   if(on){
     requestWakeLock();
     if(!('wakeLock' in navigator)){
@@ -1300,6 +1572,11 @@ function checkLive(){
   const what = snap.wk ? `<b>${esc(snap.wk.name)}</b>, step ${snap.idx + 1}/${snap.wk.steps.length}` : '<b>a manual session</b>';
   $('resumeText').innerHTML = `Unfinished ${what} found (${mmss(snap.beltSec)} done). Connect to carry on from where you were.`;
   $('resumeCard').classList.add('show');
+  if(NATIVE){                                          // the page reloaded but the app kept the treadmill connected: resume without asking
+    TM.call('status').then(s => {
+      if(pendingSnap && (s.connected || []).length){ log('Page reloaded: treadmill still connected, resuming automatically'); $('resumeText').textContent = 'Reconnecting…'; connectTreadmill(); }
+    }).catch(() => {});
+  }
 }
 function doResume(){
   const snap = pendingSnap; pendingSnap = null; resumeArmed = false;
@@ -1334,6 +1611,8 @@ function doResume(){
   } else { speak('Session resumed'); }
   if(gap > 1) catchUp(gap, false);                   // counts the missed time step by step (running vs walking)
   log('Resumed session; gap', Math.round(gap) + 's');
+  if(!NATIVE && W.active){ W.msCfg = buildMilestones(); MS.init(W.msCfg); }
+  syncFromNative();
 }
 
 // ---------- Main tick ----------
@@ -1361,6 +1640,7 @@ function tick(){
       if(st.hr){ const z = zoneOf(st.hr); if(z >= 0) st.zoneSec[z] += d; }
     }
     workoutTick(Math.max(0, d));
+    if(!NATIVE && W.active && !W.done && d > 0) MS.tick(d, sessionDistKm() * 1000, W.steps[W.idx]);
   }
   if(st.speed > 0.3 && st.hr){ st.hrSum += st.hr; st.hrN++; st.hrMax = Math.max(st.hrMax, st.hr); }
   if(st.hrSrc === 'strap' && st.hrAt && now - st.hrAt > 10000){ st.hr = null; }
@@ -1600,6 +1880,250 @@ function renderPlanEditor(){
   el.querySelectorAll('select').forEach(sel => sel.onchange = () => { const p = plan(); p[+sel.dataset.day] = sel.value; S.plan = p; save('pt_settings', S); renderHome(); });
 }
 function weekStart(d){ const x = dOnly(d); return new Date(x.getTime() - ((x.getDay() + 6) % 7) * DAY); }
+// Native app on a free Apple ID: the install stops working when its provisioning profile expires (7 days).
+// The native side reads the real expiry date from the app itself and schedules reminders; here we show it.
+async function checkExpiry(){
+  try{
+    const r = await TM.call('expiry'); if(!r || !r.expires) return;
+    const d = new Date(r.expires), left = r.expires - Date.now();
+    const when = d.toLocaleString('en-IN', {weekday:'short', day:'numeric', month:'short', hour:'numeric', minute:'2-digit'});
+    $('appExpiry').style.display = ''; $('appExpiry').innerHTML = `App works until <b>${when}</b>. To renew: plug the iPhone into the Mac and press ▶ in Xcode.` +
+      (r.reused ? ' <span style="opacity:.75">(If this date doesn\'t move after re-installing, Xcode reused the same 7-day profile; it renews once that one expires.)</span>' : '');
+    const b = $('expiryBanner');
+    if(left < 2 * DAY){ b.style.display = ''; b.classList.add('show'); b.innerHTML = `⚠️ This app stops opening <b>${when}</b>${left < DAY ? ' (less than a day)' : ''}. Plug the iPhone into your Mac and press ▶ in Xcode to renew it. Your data is safe either way.`; }
+    else { b.style.display = 'none'; b.classList.remove('show'); }
+  }catch(e){ log('expiry check failed', errText(e)); }
+}
+// ---------- Import Apple Watch walks / runs (native app) ----------
+// Heart-rate stats from Watch samples, same rules as the Sheet script (time-weighted, gaps capped at 30 s).
+function hrStats(samples, startMs, endMs){
+  const sm = samples.filter(x => x.t >= startMs - 5000 && x.t <= endMs + 5000).sort((a, b) => a.t - b.t);
+  if(sm.length < 2) return null;
+  let wsum = 0, w = 0, max = 0; const z = [0, 0, 0, 0];
+  sm.forEach((x, i) => { const next = sm[i + 1] ? sm[i + 1].t : Math.min(endMs, x.t + 5000);
+    const dt = Math.max(0, Math.min(30000, next - x.t)) / 1000; wsum += x.v * dt; w += dt; max = Math.max(max, x.v);
+    const zi = x.v <= ZONES[0].max ? 0 : x.v <= ZONES[1].max ? 1 : x.v <= ZONES[2].max ? 2 : 3; z[zi] += dt; });
+  const near = (t, tol) => { let b = null; for(const x of samples){ const d = Math.abs(x.t - t); if(d <= tol && (!b || d < Math.abs(b.t - t))) b = x; } return b ? Math.round(b.v) : ''; };
+  return {avg_hr: Math.round(wsum / Math.max(1, w)), max_hr: Math.round(max), end_hr: near(endMs, 30000), recovery_hr: near(endMs + 60000, 20000),
+    z1_min: +(z[0] / 60).toFixed(2), z2_min: +(z[1] / 60).toFixed(2), z3_min: +(z[2] / 60).toFixed(2), z4plus_min: +(z[3] / 60).toFixed(2), hr_source: 'watch'};
+}
+let hkPending = [];
+async function checkWatchWorkouts(){
+  if(!NATIVE) return;
+  try{
+    const now = Date.now(), r = await TM.call('workouts', {from: now - 14 * DAY, to: now});
+    const hist = load('pt_history', []).map(normSession), ignored = load('pt_hkIgnored', []);
+    const span = x => { const s = x.started_at ? new Date(x.started_at).getTime() : new Date(`${x.date}T${(x.time || '00:00').slice(0,5)}:00`).getTime(); return [s, s + (+x.duration_min || 0) * 60000]; };
+    hkPending = (r.workouts || []).filter(wk => {
+      if(ignored.includes(wk.id) || hist.some(x => x.id === 'hk_' + wk.id)) return false;
+      if(wk.duration < 300) return false;                                       // under 5 min: not a workout
+      return !hist.some(x => { const [a, b] = span(x); const ov = Math.min(b, wk.end) - Math.max(a, wk.start); return ov > 0.5 * Math.min(b - a, wk.end - wk.start); });   // already saved (e.g. a treadmill run)
+    });
+  }catch(e){ log('Watch workouts:', errText(e)); hkPending = []; }
+  renderHkCard();
+}
+function hkName(wk){ return (wk.indoor ? 'Indoor ' : 'Outdoor ') + ({walk:'walk', run:'run', hike:'hike'}[wk.kind] || 'walk'); }
+function renderHkCard(){
+  const c = $('hkCard'); if(!c) return;
+  if(!hkPending.length){ c.style.display = 'none'; return; }
+  c.style.display = '';
+  c.innerHTML = `<div class="h3">⌚ ${hkPending.length} new Watch workout${hkPending.length > 1 ? 's' : ''}</div>` + hkPending.map(wk => {
+    const d = new Date(wk.start);
+    return `<div class="row" style="justify-content:space-between;align-items:center;margin-top:10px;gap:8px">
+      <div><b>${hkName(wk)}</b><div class="small">${d.toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'})} · ${d.toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})} · ${mmTxt(wk.duration / 60)} · ${(wk.meters / 1000).toFixed(2)} km</div></div>
+      <div class="row" style="gap:6px;flex-shrink:0"><button class="ghost" data-hkig="${esc(wk.id)}">Ignore</button><button class="primary" data-hkim="${esc(wk.id)}">Import</button></div></div>`;
+  }).join('') + '<div class="note">From Apple Health. Treadmill sessions already in the app are skipped. Imported walks count in your weekly km; outdoor ones stay out of the treadmill trend.</div>';
+  c.querySelectorAll('[data-hkig]').forEach(b => b.onclick = () => { const ig = load('pt_hkIgnored', []); ig.push(b.dataset.hkig); save('pt_hkIgnored', ig.slice(-200));
+    hkPending = hkPending.filter(x => x.id !== b.dataset.hkig); renderHkCard(); });
+  c.querySelectorAll('[data-hkim]').forEach(b => b.onclick = () => importWatchWorkout(b.dataset.hkim, b));
+}
+async function importWatchWorkout(id, btn){
+  const wk = hkPending.find(x => x.id === id); if(!wk) return;
+  if(btn){ btn.disabled = true; btn.textContent = 'Importing…'; }
+  const d = new Date(wk.start), min = wk.duration / 60, km = wk.meters / 1000, run = wk.kind === 'run';
+  const rec = {id: 'hk_' + wk.id, date: localDate(d), time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+    started_at: d.toISOString(), workout: hkName(wk), source: 'watch', duration_min: +min.toFixed(2), distance_km: +km.toFixed(2),
+    avg_speed: min > 0 ? +(km / (min / 60)).toFixed(2) : '', run_speed: run && min > 0 ? +(km / (min / 60)).toFixed(2) : '', run_min: run ? +min.toFixed(2) : 0,
+    kcal: wk.kcal ? Math.round(wk.kcal) : '', stepdowns: '', notes: `Apple Watch ${wk.indoor ? 'indoor' : 'outdoor'} workout${wk.source ? ' (' + wk.source + ')' : ''}`,
+    avg_hr:'', max_hr:'', end_hr:'', recovery_hr:'', z1_min:'', z2_min:'', z3_min:'', z4plus_min:'', hr_source:'', steps_json:''};
+  try{ const res = await TM.call('heartRate', {from: wk.start - 60000, to: wk.end + 120000}); const hs = hrStats(res.samples || [], wk.start, wk.end); if(hs) Object.assign(rec, hs); }
+  catch(e){ log('Import: no heart rate', errText(e)); }
+  saveRecord(rec);
+  hkPending = hkPending.filter(x => x.id !== id); renderHkCard();
+  showBanner(`Imported ${rec.workout}: ${km.toFixed(2)} km in ${mmTxt(min)}${rec.avg_hr ? `, avg HR ${rec.avg_hr}` : ''}.`);
+}
+// ---------- Weather (Open-Meteo, free, no key) ----------
+let WX = null;
+async function getWeather(){
+  if(WX && Date.now() - WX.at < 20 * 60000) return WX;
+  try{
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${+S.lat || 30.70}&longitude=${+S.lon || 76.72}&current=temperature_2m,relative_humidity_2m,dew_point_2m&timezone=auto`);
+    const d = await r.json(); const c = d.current || {};
+    if(c.temperature_2m == null) return WX;
+    WX = {at: Date.now(), temp: Math.round(c.temperature_2m), rh: Math.round(c.relative_humidity_2m), dp: Math.round(c.dew_point_2m)};
+  }catch(e){ log('Weather unavailable', errText(e)); }
+  return WX;
+}
+
+// ---------- Readiness: sleep, resting HR, HRV (Apple Health) + weather ----------
+let READY = null;
+async function checkReadiness(force){
+  if(READY && !force && Date.now() - READY.at < 30 * 60000) return renderReady();
+  const wx = await getWeather();
+  let hk = {};
+  if(NATIVE){ try{ hk = await TM.call('readiness'); }catch(e){ log('Readiness:', errText(e)); } }
+  const f = [];                                       // factors: {lvl:0 green /1 amber /2 red, txt}
+  if(hk.sleepH != null){ const s = hk.sleepH; f.push({lvl: s >= 6.5 ? 0 : s >= 5.5 ? 1 : 2, txt: `Sleep ${s} h`}); }
+  if(hk.rhr != null && hk.rhrBase != null){ const d = Math.round(hk.rhr - hk.rhrBase); f.push({lvl: d <= 3 ? 0 : d <= 6 ? 1 : 2, txt: `Resting HR ${Math.round(hk.rhr)} (${d >= 0 ? '+' : ''}${d} vs your normal ${Math.round(hk.rhrBase)})`}); }
+  if(hk.hrv != null && hk.hrvBase != null){ const q = hk.hrv / hk.hrvBase; f.push({lvl: q >= 0.85 ? 0 : q >= 0.7 ? 1 : 2, txt: `HRV ${Math.round(hk.hrv)} ms (${Math.round((q - 1) * 100) >= 0 ? '+' : ''}${Math.round((q - 1) * 100)}% vs normal ${Math.round(hk.hrvBase)})`}); }
+  if(wx){ f.push({lvl: wx.dp < 16 ? 0 : 1, txt: `${wx.temp}°C, humidity ${wx.rh}%, dew point ${wx.dp}°C` + (wx.dp >= 16 ? ' (humid: HR runs higher, not a fair test day)' : wx.temp <= 12 ? ' (cold: flatters HR a little)' : '')}); }
+  const reds = f.filter(x => x.lvl === 2).length, ambers = f.filter(x => x.lvl === 1).length;
+  const lvl = !f.length ? null : reds || ambers >= 3 ? 2 : ambers ? 1 : 0;
+  READY = {at: Date.now(), lvl, f, hk, wx};
+  renderReady();
+}
+function renderReady(){
+  const c = $('readyCard'); if(!c || !READY) return;
+  if(READY.lvl == null){ c.style.display = 'none'; return; }
+  const L = [{icon:'🟢', head:'Ready: go as planned', tip:'Normal day. Follow the plan.'},
+             {icon:'🟡', head:'Take it easier today', tip:'Do the session, but don\'t progress today; step down early if HR climbs. Easy or Zone 2 work is fine.'},
+             {icon:'🔴', head:'Recovery day', tip:'Swap a hard run for Zone 2 or an easy walk, or rest. Hard work on a day like this builds little and costs a lot.'}][READY.lvl];
+  const dot = l => ['🟢','🟡','🔴'][l];
+  c.style.display = '';
+  c.innerHTML = `<div class="small">READINESS · TODAY</div><div class="h3" style="margin:4px 0">${L.icon} ${L.head}</div>
+    ${READY.f.map(x => `<div class="small" style="margin:3px 0">${dot(x.lvl)} ${esc(x.txt)}</div>`).join('')}
+    <div class="note">${L.tip}${NATIVE && READY.hk.sleepH == null ? ' Sleep, resting HR and HRV come from Apple Health (wear the Watch to bed).' : ''}${!NATIVE ? ' Sleep, resting HR and HRV are only available in the iPhone app.' : ''}</div>`;
+  renderCoach();
+}
+
+// ---------- "Next session" coach: applies the agreed rules to your last sessions ----------
+function coachPlan(){
+  const rows = sortSessions(load('pt_history', []).map(normSession));          // newest first
+  const isZ2 = r => /zone\s*2|z2/i.test(r.workout);
+  const hard = rows.filter(r => sessKind(r) === 'run' && !isZ2(r) && !/outdoor|5k|interval|hard/i.test(r.workout + ' ' + r.notes) && +r.run_speed >= 5.3 && planCheck(r));
+  const out = {};
+  if(hard.length){
+    const a = hard[0], ca = planCheck(a), sp = +a.run_speed, b = hard[1], cb = b && Math.abs(+b.run_speed - sp) < 0.05 ? planCheck(b) : null;
+    const tail = /6\.0|last 5|finish/i.test(a.workout);
+    const fmt = x => x.toFixed(1);
+    if(ca.worst === 'bad' && cb && cb.worst === 'bad'){ const ns = Math.max(5.0, sp - 0.2); out.run = {wk: runWk(ns), why: `Last two runs at ${fmt(sp)} were over the Zone 4 limit: drop to ${fmt(ns)} for now.`}; }
+    else if(ca.worst === 'bad'){ out.run = {wk: tail ? findWorkout('r58') : runWk(sp), why: `Last run (${fmtShort(a.date)}) was over the limit${tail ? ': drop the 6.0 tail' : ''}. Repeat ${fmt(sp)} with the step-down rule (HR ≥157 for ~30 s → −0.2).`}; }
+    else if(ca.worst === 'warn'){ out.run = {wk: tail ? findWorkout('r58l6') : runWk(sp), why: `Last run was borderline: repeat the same session before changing anything.`}; }
+    else if(cb && cb.worst === 'ok'){
+      const next = !tail && Math.abs(sp - 5.8) < 0.05 ? findWorkout('r58l6') : tail ? tailWk(8) : runWk(sp + 0.2);
+      out.run = {wk: next, why: `Two clean passes at ${fmt(sp)}: ready for ONE change → ${next.name}.`};
+    } else out.run = {wk: tail ? findWorkout('r58l6') : runWk(sp), why: `Last run passed. Repeat it once more to confirm before progressing.`};
+    if(READY && READY.lvl === 2) out.run.override = 'Readiness is red today: do Zone 2 or rest instead.';
+    else if(READY && READY.lvl === 1 && /ready for ONE change/.test(out.run.why)) out.run.override = 'Readiness is amber: repeat the last session today and progress next time.';
+  }
+  const z = rows.find(isZ2);
+  const zsp = z ? (+z.run_speed || 5.0) : 5.0;
+  if(z && z.avg_hr !== ''){
+    const a = +z.avg_hr, ns = a < 137 ? zsp + 0.2 : a > 144 ? Math.max(4.4, zsp - 0.2) : zsp;
+    out.z2 = {wk: z2Wk(ns), why: a < 137 ? `Last Zone 2 averaged ${a} (below 137): nudge up to ${ns.toFixed(1)}.` : a > 144 ? `Last Zone 2 averaged ${a} (above 144): ease to ${ns.toFixed(1)}.` : `Last Zone 2 averaged ${a}: right on target, keep ${ns.toFixed(1)}.`};
+  } else out.z2 = {wk: z2Wk(5.0), why: 'Zone 2 at 5.0 km/h; adjust so HR sits at 133–144.'};
+  return out;
+}
+function fmtShort(d){ return parseD(d).toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'}); }
+function runWk(sp){ sp = Math.round(sp * 10) / 10; const b = BUILTIN.find(w => w.steps.length === 3 && w.steps[1].speed === sp && w.steps[1].value === 1500);
+  return b || {id:'coach_r' + sp, name:`Run ${sp.toFixed(1)} × 25`, desc:`WU 5 → run 25 @ ${sp.toFixed(1)} → CD 5 (coach)`, steps:[WU(), RUN(25, sp), CD()]}; }
+function tailWk(min){ return {id:'coach_tail' + min, name:`5.8 → last ${min} @ 6.0`, desc:`WU 5 → ${25 - min} @ 5.8 → ${min} @ 6.0 → CD 5 (coach)`, steps:[WU(), RUN(25 - min, 5.8), RUN(min, 6.0, 'Run (finish)'), CD()]}; }
+function z2Wk(sp){ sp = Math.round(sp * 10) / 10; const b = findWorkout('z2'); return {...b, id: sp === 5.0 ? 'z2' : 'coach_z2' + sp, steps: b.steps.map((s, i) => i === 1 ? {...s, speed: sp} : s)}; }
+function renderCoach(){
+  const c = $('coachCard'); if(!c) return;
+  const p = coachPlan(); if(!p.run && !p.z2){ c.style.display = 'none'; return; }
+  c.style.display = '';
+  const blk = (title, x, id) => x ? `<div style="margin-top:10px"><div class="small">${title}</div><div style="font-weight:600">${esc(x.wk.name)}</div>
+    <div class="small">${esc(x.why)}</div>${x.override ? `<div class="small" style="color:var(--warn)">⚠ ${esc(x.override)}</div>` : ''}
+    <button class="ghost" id="${id}" style="margin-top:6px">▶ Start ${esc(x.wk.name)}</button></div>` : '';
+  c.innerHTML = `<div class="small">🧭 COACH · NEXT SESSIONS</div>${blk('Next run', p.run, 'coachRun')}${blk('Next Zone 2', p.z2, 'coachZ2')}
+    <div class="note">Rules: Zone 4+ ≲4 min (limit 6), avg HR ≲141, one change at a time, two clean passes before progressing.</div>`;
+  if(p.run) $('coachRun').onclick = () => startWorkout(p.run.wk);
+  if(p.z2) $('coachZ2').onclick = () => startWorkout(p.z2.wk);
+}
+
+// ---------- Body: weight & waist ----------
+const HEIGHT_M = 1.803;
+function bodyRows(){ return load('pt_body', []).map(b => ({...b, weight_kg: b.weight_kg === '' || b.weight_kg == null ? '' : +b.weight_kg, waist_cm: b.waist_cm === '' || b.waist_cm == null ? '' : +b.waist_cm}))
+  .sort((a, b) => String(b.date).localeCompare(String(a.date))); }
+function saveBody(e){ const all = load('pt_body', []).filter(x => x.id !== e.id); all.push(e); save('pt_body', all); Sync.enqueue({type:'body', data:e}); renderBody(); }
+async function importHealthBody(){
+  if(!NATIVE) return;
+  try{
+    const r = await TM.call('body', {from: Date.now() - 180 * DAY});
+    const byDay = {};
+    (r.weight || []).forEach(x => { const d = localDate(new Date(x.t)); (byDay[d] = byDay[d] || {}).w = +x.v; });     // last of the day wins
+    (r.waist || []).forEach(x => { const d = localDate(new Date(x.t)); (byDay[d] = byDay[d] || {}).c = +x.v; });
+    const have = load('pt_body', []); let added = 0;
+    for(const [d, v] of Object.entries(byDay)){
+      if(have.some(x => x.date === d && x.source !== 'health')) continue;                                       // your own entry for that day wins
+      const id = 'hb_' + d, old = have.find(x => x.id === id);
+      const e = {id, date: d, weight_kg: v.w != null ? +v.w.toFixed(1) : (old ? old.weight_kg : ''), waist_cm: v.c != null ? +v.c.toFixed(1) : (old ? old.waist_cm : ''), source:'health', notes:'Apple Health', updated_at: new Date().toISOString()};
+      if(old && old.weight_kg === e.weight_kg && old.waist_cm === e.waist_cm) continue;
+      saveBody(e); added++;
+    }
+    if(added) log('Body: imported', added, 'day(s) from Apple Health');
+  }catch(e){ log('Body import:', errText(e)); }
+}
+function renderBody(){
+  if(!$('bodyKpis')) return;
+  const rows = bodyRows(), w = rows.filter(r => r.weight_kg !== '').slice().reverse();      // oldest first
+  const avg7 = i => { const t = parseD(w[i].date).getTime(), win = w.filter(x => { const u = parseD(x.date).getTime(); return u <= t && u > t - 7 * DAY; }); return win.reduce((a, x) => a + x.weight_kg, 0) / win.length; };
+  if(!w.length){ $('bodyKpis').innerHTML = `<div class="h3">Body</div><div class="small">No weigh-ins yet. Add one below${NATIVE ? ', or log weight in Apple Health (e.g. from a smart scale) and it appears here automatically' : ''}.</div>`; $('bodyChart').innerHTML = $('bodyLegend').innerHTML = ''; }
+  else {
+    const last = w[w.length - 1], la = avg7(w.length - 1);
+    const lt = parseD(last.date).getTime();
+    const ago = days => { const i = w.map((x, k) => [x, k]).filter(([x]) => parseD(x.date).getTime() <= lt - days * DAY).pop(); return i ? avg7(i[1]) : null; };
+    const a30 = ago(28), a7 = ago(7);
+    const rate = a30 != null ? (la - a30) / 4 : null;
+    const waist = rows.filter(r => r.waist_cm !== ''), wl = waist[0], wp = waist[1];
+    const chg = (v, unit) => v == null ? '–' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}${unit}`;
+    $('bodyKpis').innerHTML = `<div class="small">BODY · ${fmtShort(last.date).toUpperCase()}</div>
+      <div class="kpis">
+        <div class="kpi"><div class="v">${last.weight_kg.toFixed(1)}</div><div class="l">kg latest</div></div>
+        <div class="kpi"><div class="v">${la.toFixed(1)}</div><div class="l">7-day avg</div></div>
+        <div class="kpi"><div class="v">${chg(a7 != null ? la - a7 : null, '')}</div><div class="l">vs a week ago</div></div>
+        <div class="kpi"><div class="v">${chg(rate, '')}</div><div class="l">kg / week (4 wk)</div></div>
+        <div class="kpi"><div class="v">${(la / HEIGHT_M / HEIGHT_M).toFixed(1)}</div><div class="l">BMI</div></div>
+        <div class="kpi"><div class="v">${wl ? wl.waist_cm.toFixed(1) : '–'}</div><div class="l">waist cm${wl && wp ? ' (' + chg(wl.waist_cm - wp.waist_cm, '') + ')' : ''}</div></div>
+      </div>
+      <div class="note">${rate == null ? 'A trend needs about 4 weeks of weigh-ins.' : rate < -0.75 ? 'Losing faster than ~0.75 kg/week: with your training load, eat a little more so muscle isn\'t lost.' : rate < -0.2 ? 'Steady, sustainable fat loss (0.25–0.5 kg/week is the sweet spot).' : rate <= 0.15 ? 'Weight about stable. Fine if waist is shrinking; otherwise a small food change (not more cardio) moves it.' : 'Trending up. Check portions and evening snacks; a slow gain can also be muscle if waist is steady.'}</div>`;
+    const pts = w.map((x, i) => ({x: parseD(x.date).getTime(), y: x.weight_kg, tip: `<b>${fmtShort(x.date)}</b><br>${x.weight_kg.toFixed(1)} kg${x.waist_cm !== '' ? ' · waist ' + x.waist_cm + ' cm' : ''}`}));
+    const avgPts = w.map((x, i) => ({x: parseD(x.date).getTime(), y: +avg7(i).toFixed(2), tip: `<b>${fmtShort(x.date)}</b><br>7-day avg ${avg7(i).toFixed(1)} kg`}));
+    $('bodyLegend').innerHTML = '<span><i style="background:var(--s1)"></i>Weigh-in</span><span><i style="background:var(--s2)"></i>7-day average</span>';
+    $('bodyChart').innerHTML = weightChart(pts, avgPts);
+    bindTips('#tab-body');
+  }
+  $('bodyList').innerHTML = rows.length ? `<table class="stbl"><tr><th>Date</th><th>kg</th><th>Waist</th><th></th></tr>` + rows.slice(0, 60).map(r =>
+    `<tr><td>${fmtShort(r.date)}${r.source === 'health' ? ' <span class="small">⌚</span>' : ''}</td><td>${r.weight_kg !== '' ? r.weight_kg.toFixed(1) : '–'}</td><td>${r.waist_cm !== '' ? r.waist_cm : '–'}</td>
+      <td style="text-align:right"><button class="ghost" style="padding:4px 10px" data-bdel="${esc(r.id)}">✕</button></td></tr>`).join('') + '</table>' : '<div class="small">No entries yet.</div>';
+  $('bodyList').querySelectorAll('[data-bdel]').forEach(b => b.onclick = () => { if(!confirm('Delete this entry?')) return;
+    save('pt_body', load('pt_body', []).filter(x => x.id !== b.dataset.bdel)); Sync.enqueue({type:'deleteBody', id: b.dataset.bdel}); renderBody(); });
+}
+function weightChart(pts, avg){
+  const all = pts.concat(avg); let lo = Math.min(...all.map(p => p.y)), hi = Math.max(...all.map(p => p.y));
+  const pad = Math.max(0.5, (hi - lo) * 0.15); lo = Math.floor((lo - pad) * 2) / 2; hi = Math.ceil((hi + pad) * 2) / 2;
+  let x0 = Math.min(...pts.map(p => p.x)), x1 = Math.max(...pts.map(p => p.x)); if(x1 - x0 < 7 * DAY){ x0 = x1 - 7 * DAY; }
+  const ph = CH - PT - PB, X = x => PL + (x - x0) / (x1 - x0) * (CW - PL - PR - 6) + 3, Y = y => PT + ph * (1 - (y - lo) / (hi - lo));
+  let g = ''; for(let i = 0; i <= 4; i++){ const v = lo + (hi - lo) * i / 4; g += `<line x1="${PL}" x2="${CW - PR}" y1="${Y(v)}" y2="${Y(v)}" class="grid"/><text x="${PL - 4}" y="${Y(v) + 3}" text-anchor="end">${v.toFixed(1)}</text>`; }
+  let m = `<polyline fill="none" style="stroke:var(--s2)" stroke-width="2" stroke-linejoin="round" points="${avg.map(p => X(p.x) + ',' + Y(p.y)).join(' ')}"/>`;
+  pts.forEach(p => { m += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3.5" style="fill:var(--s1);stroke:var(--card)" stroke-width="1.5"/><circle class="hit" cx="${X(p.x)}" cy="${Y(p.y)}" r="11" data-tip="${esc(p.tip)}"/>`; });
+  let xl = ''; for(let i = 0; i <= 3; i++){ const t = x0 + (x1 - x0) * i / 3; xl += `<text x="${X(t)}" y="${CH - 6}" text-anchor="${i === 0 ? 'start' : i === 3 ? 'end' : 'middle'}">${new Date(t).toLocaleDateString('en-IN', {day:'numeric', month:'short'})}</text>`; }
+  return `<svg class="chart" viewBox="0 0 ${CW} ${CH}">${g}${m}${xl}</svg>`;
+}
+function bindBody(){
+  $('bDate').value = localDate(new Date());
+  $('bHealthNote').textContent = NATIVE ? 'Weights logged in Apple Health (e.g. a smart scale) are added automatically (⌚).' : '';
+  $('bSave').onclick = () => {
+    const d = $('bDate').value, wt = parseFloat($('bWeight').value), ws = parseFloat($('bWaist').value);
+    if(!d || (isNaN(wt) && isNaN(ws))) return showBanner('Enter a weight or a waist measurement.');
+    if(!isNaN(wt) && (wt < 35 || wt > 200)) return showBanner('That weight looks off: please check it.');
+    const old = load('pt_body', []).find(x => x.date === d && x.source !== 'health');
+    saveBody({id: old ? old.id : newId('b'), date: d, weight_kg: isNaN(wt) ? (old ? old.weight_kg : '') : +wt.toFixed(1), waist_cm: isNaN(ws) ? (old ? old.waist_cm : '') : +ws.toFixed(1),
+      source:'manual', notes: $('bNote').value.trim(), updated_at: new Date().toISOString()});
+    $('bWeight').value = $('bWaist').value = $('bNote').value = ''; showBanner('Saved');
+  };
+}
 function renderHome(){
   if(!$('todayCard')) return;
   const rows = load('pt_history', []).map(normSession);
@@ -1620,6 +2144,7 @@ function renderHome(){
       <div class="small">Recovery is part of training: muscles and tendons adapt on rest days. An easy walk is fine.</div>${doneTxt}
       <div class="row" style="margin-top:10px"><button class="ghost grow" data-goto="workouts">Start something anyway</button></div>`;
   if(w) $('homeStart').onclick = () => startWorkout(w);
+  renderCoach(); checkReadiness();
 
   // This week
   const ws = weekStart(today), wsStr = localDate(ws);
@@ -1710,6 +2235,7 @@ function showTab(name){
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + name));
   if(name === 'reports') renderReports();
   if(name === 'home') renderHome();
+  if(name === 'body'){ renderBody(); importHealthBody(); }
   window.scrollTo({top:0});
 }
 function renderHistory(){
@@ -2156,14 +2682,16 @@ function pickVoice(){
   const vs = speechSynthesis.getVoices();
   return (S.voiceURI && vs.find(v => v.voiceURI === S.voiceURI)) || null;
 }
-function speak(text, force){
+function speak(text, force, queue){
   log('🔊', text);
-  if((!S.voice && !force) || !window.speechSynthesis) return;
+  if(!S.voice && !force) return;
+  if(NATIVE){ TM.call('speak', {text, force: !!force, voice: S.voiceURI || '', rate: +S.voiceRate || 1, pitch: +S.voicePitch || 1}).catch(() => {}); return; }
+  if(!window.speechSynthesis) return;
   try{
     const u = new SpeechSynthesisUtterance(text), v = pickVoice();
     if(v){ u.voice = v; u.lang = v.lang; } else u.lang = 'en-IN';
     u.rate = +S.voiceRate || 1; u.pitch = +S.voicePitch || 1;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
+    if(!queue) speechSynthesis.cancel(); speechSynthesis.speak(u);
   }catch(e){}
 }
 function voiceLabel(v){
@@ -2191,7 +2719,7 @@ function initVoiceUi(){
 let wakeLock = null;
 async function requestWakeLock(){ try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
 function releaseWakeLock(){ try{ wakeLock && wakeLock.release(); wakeLock = null; }catch(e){} }
-document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ if(W.active) keepAwake(true); tick(); } });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible'){ if(W.active) keepAwake(true); tick(); syncFromNative(); if(NATIVE && !W.active) checkWatchWorkouts(); } else if(W.active) syncNative(); });
 
 // ---------- Demo mode (simulated treadmill, for trying the app) ----------
 const demo = {target:0, running:false, hr:95, dist:0};
@@ -2282,6 +2810,14 @@ function init(){
     S.maxSpeed = clamp(S.maxSpeed, 1, 16);
     save('pt_settings', S); showBanner('Settings saved');
   };
+  $('msDist').value = String(S.msDist); $('msTime').value = String(S.msTime);
+  $('msDist').onchange = () => { S.msDist = +$('msDist').value; save('pt_settings', S); };
+  $('msTime').onchange = () => { S.msTime = +$('msTime').value; save('pt_settings', S); };
+  ['msHalf','msRounds','msRecords','msSummary'].forEach(k => { $(k).checked = !!S[k]; $(k).onchange = () => { S[k] = $(k).checked; save('pt_settings', S); }; });
+  $('sLat').value = S.lat; $('sLon').value = S.lon;
+  const setPlace = () => { S.lat = parseFloat($('sLat').value) || 30.70; S.lon = parseFloat($('sLon').value) || 76.72; save('pt_settings', S); WX = null; READY = null; };
+  $('sLat').onchange = $('sLon').onchange = setPlace;
+  document.querySelectorAll('[data-place]').forEach(b => b.onclick = () => { const [a, o] = b.dataset.place.split(','); $('sLat').value = a; $('sLon').value = o; setPlace(); showBanner('Weather location set to ' + b.textContent); });
   $('sTheme').value = S.theme || 'auto';
   $('sTheme').onchange = () => { S.theme = $('sTheme').value; save('pt_settings', S); applyTheme(); };
   $('btnSyncNow').onclick = async () => { S.hook = $('sHook').value.trim(); S.key = $('sKey').value.trim(); save('pt_settings', S);
@@ -2316,6 +2852,8 @@ function init(){
   log('UA: ' + navigator.userAgent.slice(0,120));
   log('App version ' + APP_VERSION);
   $('appVersion').textContent = APP_VERSION;
+  if(NATIVE){ checkExpiry(); checkWatchWorkouts(); }
+  bindBody(); renderBody();
   log('Ready. Bluetooth ' + (navigator.bluetooth ? 'available' : 'NOT available') + ' in this browser.');
 }
 window.addEventListener('beforeunload', e => { if(W.active){ e.preventDefault(); e.returnValue = ''; } });
